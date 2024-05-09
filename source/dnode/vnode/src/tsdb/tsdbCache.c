@@ -330,32 +330,61 @@ static void rocksMayWrite(STsdb *pTsdb, bool force, bool read, bool lock) {
   }
 }
 
-static SLastColV0 *tsdbCacheDeserializeV0(char const *value, size_t *inOutOffset) {
-  SLastColV0 *pLastColV0 = NULL;
-  size_t      localOffset = 0;
+typedef struct {
+  TSKEY  ts;
+  int8_t dirty;
+  struct {
+    int16_t cid;
+    int8_t  type;
+    int8_t  flag;
+    union {
+      int64_t val;
+      struct {
+        uint32_t nData;
+        uint8_t *pData;
+      };
+    } value;
+  } colVal;
+} SLastColVersion0;
 
-  if (!value) {
-    goto _OUT;
+static int32_t tsdbCacheDeserializeV0(char const *value, SLastCol *pLastCol) {
+  SLastColVersion0 *pLastColV0 = (SLastColVersion0 *)value;
+
+  pLastCol->rowKey.ts = pLastColV0->ts;
+  pLastCol->rowKey.numOfPKs = 0;
+  pLastCol->dirty = pLastColV0->dirty;
+  pLastCol->colVal.cid = pLastColV0->colVal.cid;
+  pLastCol->colVal.flag = pLastColV0->colVal.flag;
+  pLastCol->colVal.value.type = pLastColV0->colVal.type;
+
+  if (IS_VAR_DATA_TYPE(pLastCol->colVal.value.type)) {
+    pLastCol->colVal.value.nData = pLastColV0->colVal.value.nData;
+    pLastCol->colVal.value.pData = (uint8_t *)(&pLastColV0[1]);
+    return sizeof(SLastColVersion0) + pLastColV0->colVal.value.nData;
+  } else {
+    pLastCol->colVal.value.val = pLastColV0->colVal.value.val;
+    return sizeof(SLastColVersion0);
+  }
+}
+
+static int32_t tsdbCacheSerializeV0(char const *value, SLastCol *pLastCol) {
+  SLastColVersion0 *pLastColV0 = (SLastColVersion0 *)value;
+
+  pLastColV0->ts = pLastCol->rowKey.ts;
+  pLastColV0->dirty = pLastCol->dirty;
+  pLastColV0->colVal.cid = pLastCol->colVal.cid;
+  pLastColV0->colVal.flag = pLastCol->colVal.flag;
+  pLastColV0->colVal.type = pLastCol->colVal.value.type;
+  if (IS_VAR_DATA_TYPE(pLastCol->colVal.value.type)) {
+    pLastColV0->colVal.value.nData = pLastCol->colVal.value.nData;
+    memcpy(&pLastColV0[1], pLastCol->colVal.value.pData, pLastCol->colVal.value.nData);
+    return sizeof(SLastColVersion0) + pLastCol->colVal.value.nData;
+  } else {
+    pLastColV0->colVal.value.val = pLastCol->colVal.value.val;
+    return sizeof(SLastColVersion0);
   }
 
-  pLastColV0 = taosMemoryMalloc(sizeof(SLastColV0));
-  *pLastColV0 = *(SLastColV0 *)(value);
-
-  localOffset = sizeof(*pLastColV0);
-
-  SColValV0 *pColValV0 = &pLastColV0->colVal;
-  if (IS_VAR_DATA_TYPE(pColValV0->type)) {
-    if (pColValV0->value.nData > 0) {
-      pColValV0->value.pData = (char *)value + localOffset;
-      localOffset += pColValV0->value.nData;
-    } else {
-      pColValV0->value.pData = NULL;
-    }
-  }
-
-_OUT:
-  *inOutOffset += localOffset;
-  return pLastColV0;
+  return 0;
 }
 
 static SLastCol *tsdbCacheDeserialize(char const *value, size_t size) {
@@ -363,66 +392,32 @@ static SLastCol *tsdbCacheDeserialize(char const *value, size_t size) {
     return NULL;
   }
 
-  size_t offset = 0;
-
-  SLastColV0 *pLastColV0 = tsdbCacheDeserializeV0(value, &offset);
-  if (NULL == pLastColV0) {
+  SLastCol *pLastCol = taosMemoryMalloc(sizeof(SLastCol));
+  if (pLastCol == NULL) {
     return NULL;
   }
 
-  SLastCol *pLastCol = taosMemoryMalloc(sizeof(SLastCol));
-  pLastCol->rowKey.ts = pLastColV0->ts;
-  pLastCol->dirty = pLastColV0->dirty;
-  pLastCol->colVal.cid = pLastColV0->colVal.cid;
-  pLastCol->colVal.flag = pLastColV0->colVal.flag;
-  pLastCol->colVal.value.type = pLastColV0->colVal.type;
-  if (IS_VAR_DATA_TYPE(pLastCol->colVal.value.type)) {
-    pLastCol->colVal.value.nData = pLastColV0->colVal.value.nData;
-    pLastCol->colVal.value.pData = pLastColV0->colVal.value.pData;
-  } else {
-    pLastCol->colVal.value.val = pLastColV0->colVal.value.val;
-  }
+  int32_t offset = tsdbCacheDeserializeV0(value, pLastCol);
+  if (offset != size) {
+    // version
+    uint8_t version = *(uint8_t *)(value + offset);
+    offset++;
 
-  taosMemoryFreeClear(pLastColV0);
+    // offset
+    pLastCol->rowKey.numOfPKs = *(uint8_t *)(value + offset);
+    offset++;
 
-  if (offset == size) {
-    // version 0
-    pLastCol->version = LAST_COL_VERSION;
-    pLastCol->rowKey.numOfPKs = 0;
-    memset(pLastCol->rowKey.pks, 0, sizeof(pLastCol->rowKey.pks));
-    return pLastCol;
-  }
+    // pks
+    for (int32_t i = 0; i < pLastCol->rowKey.numOfPKs; i++) {
+      pLastCol->rowKey.pks[i] = *(SValue *)(value + offset);
+      offset += sizeof(SValue);
 
-  pLastCol->version = *(int8_t *)(value + offset);
-  offset += sizeof(int8_t);
-
-  pLastCol->rowKey.numOfPKs = *(uint8_t *)(value + offset);
-  offset += sizeof(uint8_t);
-
-  for (int8_t i = 0; i < pLastCol->rowKey.numOfPKs; i++) {
-    SValue *pValue = &pLastCol->rowKey.pks[i];
-    *pValue = *(SValue *)(value + offset);
-    offset += sizeof(SValue);
-
-    if (IS_VAR_DATA_TYPE(pValue->type)) {
-      if (pValue->nData > 0) {
-        pValue->pData = (char *)value + offset;
-        offset += pValue->nData;
-      } else {
-        pValue->pData = NULL;
+      if (IS_VAR_DATA_TYPE(pLastCol->rowKey.pks[i].type)) {
+        pLastCol->rowKey.pks[i].pData = (uint8_t *)value + offset;
+        offset += pLastCol->rowKey.pks[i].nData;
       }
-    } else {
-      pValue->val = *(int64_t *)(value + offset);
-      offset += sizeof(int64_t);
     }
   }
-
-  if (size < offset) {
-    terrno = TSDB_CODE_INVALID_DATA_FMT;
-    taosMemoryFreeClear(pLastCol);
-    return NULL;
-  }
-
   return pLastCol;
 }
 
@@ -459,60 +454,39 @@ typedef struct {
 } SLastColDisk;
 */
 static void tsdbCacheSerialize(SLastCol *pLastCol, char **value, size_t *size) {
-  SColVal *pColVal = &pLastCol->colVal;
-  size_t   length = sizeof(SLastColV0);
-  if (IS_VAR_DATA_TYPE(pColVal->value.type)) {
-    length += pColVal->value.nData;
+  *size = sizeof(SLastColVersion0);
+  if (IS_VAR_DATA_TYPE(pLastCol->colVal.value.type)) {
+    *size += pLastCol->colVal.value.nData;
   }
-
-  uint8_t numOfPKs = pLastCol->rowKey.numOfPKs;
-
-  length += sizeof(int8_t) + sizeof(uint8_t) + (sizeof(SValue) * numOfPKs);  // version + numOfPKs + pks
+  *size += sizeof(uint8_t) + sizeof(uint8_t);  // version + numOfPKs
 
   for (int8_t i = 0; i < pLastCol->rowKey.numOfPKs; i++) {
+    *size += sizeof(SValue);
     if (IS_VAR_DATA_TYPE(pLastCol->rowKey.pks[i].type)) {
-      length += pLastCol->rowKey.pks[i].nData;
+      *size += pLastCol->rowKey.pks[i].nData;
     }
   }
 
-  *value = taosMemoryMalloc(length);
+  *value = taosMemoryMalloc(*size);
 
-  // copy last col
-  SLastColV0 *pToLastColV0 = (SLastColV0 *)(*value);
-  pToLastColV0->ts = pLastCol->rowKey.ts;
-  pToLastColV0->dirty = pLastCol->dirty;
-  pToLastColV0->colVal.cid = pColVal->cid;
-  pToLastColV0->colVal.flag = pColVal->flag;
-  pToLastColV0->colVal.type = pColVal->value.type;
+  int32_t offset = tsdbCacheSerializeV0(*value, pLastCol);
 
-  char *currentPos = *value + sizeof(*pToLastColV0);
+  // version
+  ((uint8_t *)(*value + offset))[0] = LAST_COL_VERSION;
+  offset++;
 
-  // copy var data value
-  if (IS_VAR_DATA_TYPE(pColVal->value.type)) {
-    SValue *pFromValue = &pColVal->value;
-    SValueV0 *pToValue = &pToLastColV0->colVal.value;
-    pToValue->pData = (pFromValue->nData == 0) ? NULL : currentPos;
-    currentPos += tsdbCacheCopyVarDataToV0(pFromValue, pToValue);
-  } else {
-    pToLastColV0->colVal.value.val = pColVal->value.val;
-  }
+  // numOfPKs
+  ((uint8_t *)(*value + offset))[0] = pLastCol->rowKey.numOfPKs;
+  offset++;
 
-  *(int8_t *)currentPos = LAST_COL_VERSION;
-  currentPos += sizeof(int8_t);
-
-  // copy var data pks
   for (int8_t i = 0; i < pLastCol->rowKey.numOfPKs; i++) {
-    SValue *pFromValue = &pLastCol->rowKey.pks[i];
-    SValue *pToValue = (SValue *)currentPos;
-    *pToValue = *pFromValue;
-    currentPos += sizeof(SValue);
-    if (IS_VAR_DATA_TYPE(pFromValue->type)) {
-      pToValue->pData = (pFromValue->nData == 0) ? NULL : currentPos;
-      currentPos += tsdbCacheCopyVarData(pFromValue, pToValue);
+    ((SValue *)(*value + offset))[0] = pLastCol->rowKey.pks[i];
+    offset += sizeof(SValue);
+    if (IS_VAR_DATA_TYPE(pLastCol->rowKey.pks[i].type)) {
+      memcpy(*value + offset, pLastCol->rowKey.pks[i].pData, pLastCol->rowKey.pks[i].nData);
+      offset += pLastCol->rowKey.pks[i].nData;
     }
   }
-
-  *size = length;
 }
 
 static void tsdbCachePutBatch(SLastCol *pLastCol, const void *key, size_t klen, SCacheFlushState *state) {
