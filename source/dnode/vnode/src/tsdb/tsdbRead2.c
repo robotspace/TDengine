@@ -131,7 +131,7 @@ static int32_t tGetPrimaryKeyIndex(uint8_t *p, SPrimaryKeyIndex *index) {
   return n;
 }
 
-static void tRowGetKeyDeepCopy(SRow* pRow, SRowKey* pKey) {
+static FORCE_INLINE void tRowGetKeyDeepCopy(SRow* pRow, SRowKey* pKey) {
   pKey->ts = pRow->ts;
   pKey->numOfPKs = pRow->numOfPKs;
   if (pKey->numOfPKs == 0) {
@@ -3632,10 +3632,12 @@ int32_t doMergeRowsInBuf(SIterInfo* pIter, uint64_t uid, SRowKey *pCurKey, SArra
       break;
     }
 
-    SRowKey nextKey = {0};
-    tRowGetKeyEx(pRow, &nextKey);
-    if (pkCompEx(pCurKey, &nextKey) != 0) {
-      break;
+    if (pCurKey->numOfPKs > 0) {
+      SRowKey nextKey = {0};
+      tRowGetKeyEx(pRow, &nextKey);
+      if (pkCompEx(pCurKey, &nextKey) != 0) {
+        break;
+      }
     }
 
     STSchema* pTSchema = NULL;
@@ -3785,12 +3787,14 @@ int32_t doMergeMemTableMultiRows(TSDBROW* pRow, SRowKey* pKey, uint64_t uid, SIt
         return TSDB_CODE_SUCCESS;
       }
 
-      SRowKey nextRowKey = {0};
-      tRowGetKeyEx(pNextRow, &nextRowKey);
-      if (pKey->numOfPKs > 0 && pkCompEx(pKey, &nextRowKey) != 0) {
-        *pResRow = current;
-        *freeTSRow = false;
-        return TSDB_CODE_SUCCESS;
+      if (pKey->numOfPKs > 0) {
+        SRowKey nextRowKey = {0};
+        tRowGetKeyEx(pNextRow, &nextRowKey);
+        if (pkCompEx(pKey, &nextRowKey) != 0) {
+          *pResRow = current;
+          *freeTSRow = false;
+          return TSDB_CODE_SUCCESS;
+        }
       }
     }
   }
@@ -3944,11 +3948,12 @@ static int32_t tsdbGetNextRowInMem(STableBlockScanInfo* pBlockScanInfo, STsdbRea
     tRowGetKeyEx(piRow, &irowKey);
 
     int32_t code = TSDB_CODE_SUCCESS;
-    int32_t ret = pkCompEx(&rowKey, &irowKey);
-    if (ret != 0) {
-      if ((ret > 0 && asc) || (ret < 0 && (!asc))) {  // ik.ts < k.ts
+    // todo(liuyao) 优化这里
+    // int32_t ret = pkCompEx(&rowKey, &irowKey);
+    if (rowKey.ts != irowKey.ts) {
+      if ((rowKey.ts > irowKey.ts && asc) || (rowKey.ts < irowKey.ts && (!asc))) {  // ik.ts < k.ts
         code = doMergeMemTableMultiRows(piRow, &irowKey, uid, piiter, pDelList, pResRow, pReader, freeTSRow);
-      } else if ((ret < 0 && asc) || (ret > 0 && (!asc))) {
+      } else if ((rowKey.ts < irowKey.ts && asc) || (rowKey.ts > irowKey.ts && (!asc))) {
         code = doMergeMemTableMultiRows(pRow, &rowKey, uid, piter, pDelList, pResRow, pReader, freeTSRow);
       }
     } else {  // ik.ts == k.ts

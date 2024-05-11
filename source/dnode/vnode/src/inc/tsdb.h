@@ -120,12 +120,21 @@ static FORCE_INLINE int64_t tsdbLogicToFileSize(int64_t lSize, int32_t szPage) {
 #define tsdbRowFromBlockData(BLOCKDATA, IROW) \
   ((TSDBROW){.type = TSDBROW_COL_FMT, .pBlockData = (BLOCKDATA), .iRow = (IROW)})
 
+#define tColRowGetKey(pBlock, irow, key)             \
+  do {                                               \
+    (key)->ts = (pBlock)->aTSKEY[(irow)];            \
+    (key)->numOfPKs = 0;                             \
+    if ((pBlock)->nColData > 0) {                    \
+      tColRowGetPrimaryKey((pBlock), (irow), (key)); \
+    }                                                \
+  } while(0)
+
 void    tsdbRowGetColVal(TSDBROW *pRow, STSchema *pTSchema, int32_t iCol, SColVal *pColVal);
 int32_t tsdbRowCompare(const void *p1, const void *p2);
 int32_t tsdbRowCompareWithoutVersion(const void *p1, const void *p2);
 int32_t tsdbRowKeyCmpr(const STsdbRowKey *key1, const STsdbRowKey *key2);
 void    tsdbRowGetKey(TSDBROW *row, STsdbRowKey *key);
-void    tColRowGetKey(SBlockData *pBlock, int32_t irow, SRowKey *key);
+void    tColRowGetPrimaryKey(SBlockData *pBlock, int32_t irow, SRowKey *key);
 
 
 // STSDBRowIter
@@ -946,7 +955,28 @@ static FORCE_INLINE int32_t tsdbKeyCmprFn(const void *p1, const void *p2) {
 // #define SL_NODE_FORWARD(n, l)  ((n)->forwards[l])
 // #define SL_NODE_BACKWARD(n, l) ((n)->forwards[(n)->level + (l)])
 
-TSDBROW *tsdbTbDataIterGet(STbDataIter *pIter);
+FORCE_INLINE TSDBROW *tsdbTbDataIterGet(STbDataIter *pIter) {
+  if (pIter == NULL) return NULL;
+
+  if (pIter->pRow) {
+    return pIter->pRow;
+  }
+
+  if (pIter->backward) {
+    if (pIter->pNode == pIter->pTbData->sl.pHead) {
+      return NULL;
+    }
+  } else {
+    if (pIter->pNode == pIter->pTbData->sl.pTail) {
+      return NULL;
+    }
+  }
+
+  pIter->pRow = &pIter->row;
+  pIter->row = pIter->pNode->row;
+
+  return pIter->pRow;
+}
 
 typedef struct {
   int64_t  suid;

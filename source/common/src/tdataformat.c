@@ -1183,14 +1183,10 @@ int32_t tRowUpsertColData(SRow *pRow, STSchema *pTSchema, SColData *aColData, in
   }
 }
 
-void tRowGetKey(SRow *row, SRowKey *key) {
-  key->ts = row->ts;
-  key->numOfPKs = row->numOfPKs;
-
+void tRowGetPrimaryKey(SRow *row, SRowKey *key) {
   if (key->numOfPKs == 0) {
     return;
   }
-
   ASSERT(row->numOfPKs <= TD_MAX_PK_COLS);
 
   SPrimaryKeyIndex indices[TD_MAX_PK_COLS];
