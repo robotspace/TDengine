@@ -91,6 +91,8 @@ cp %{_compiledir}/build/bin/taosd                   %{buildroot}%{homepath}/bin
 cp %{_compiledir}/build/bin/udfd                    %{buildroot}%{homepath}/bin
 cp %{_compiledir}/build/bin/taosBenchmark           %{buildroot}%{homepath}/bin
 cp %{_compiledir}/build/bin/taosdump                %{buildroot}%{homepath}/bin
+cp %{_compiledir}/../../enterprise/packaging/start-all.sh  %{buildroot}%{homepath}/bin
+cp %{_compiledir}/../../enterprise/packaging/stop-all.sh  %{buildroot}%{homepath}/bin
 
 if [ -f %{_compiledir}/../../../explorer/target/release/taos-explorer ]; then
     cp %{_compiledir}/../../../explorer/target/release/taos-explorer %{buildroot}%{homepath}/bin

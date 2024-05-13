@@ -90,6 +90,9 @@ cp ${compile_dir}/../packaging/tools/preun.sh       ${pkg_dir}${install_home_pat
 cp ${compile_dir}/../packaging/tools/startPre.sh    ${pkg_dir}${install_home_path}/bin
 cp ${compile_dir}/../packaging/tools/set_core.sh    ${pkg_dir}${install_home_path}/bin
 cp ${compile_dir}/../packaging/tools/taosd-dump-cfg.gdb    ${pkg_dir}${install_home_path}/bin
+cp ${top_dir}/../enterprise/packaging/start-all.sh  ${pkg_dir}${install_home_path}/bin
+cp ${top_dir}/../enterprise/packaging/stop-all.sh  ${pkg_dir}${install_home_path}/bin
+
 
 cp ${compile_dir}/build/bin/taosd                   ${pkg_dir}${install_home_path}/bin
 cp ${compile_dir}/build/bin/udfd                   ${pkg_dir}${install_home_path}/bin
