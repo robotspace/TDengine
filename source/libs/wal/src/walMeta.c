@@ -226,11 +226,11 @@ static FORCE_INLINE int64_t walScanLogGetLastVer(SWal* pWal, int32_t fileIdx) {
       goto _err;
     }
 
-    if (taosFsyncFile(pFile) < 0) {
-      wError("failed to fsync file due to %s. file:%s", strerror(errno), fnameStr);
-      terrno = TAOS_SYSTEM_ERROR(errno);
-      goto _err;
-    }
+    // if (taosFsyncFile(pFile) < 0) {
+    //   wError("failed to fsync file due to %s. file:%s", strerror(errno), fnameStr);
+    //   terrno = TAOS_SYSTEM_ERROR(errno);
+    //   goto _err;
+    // }
   }
 
   pFileInfo->fileSize = lastEntryEndOffset;
@@ -636,19 +636,19 @@ int walCheckAndRepairIdxFile(SWal* pWal, int32_t fileIdx) {
              pWal->cfg.vgId, terrstr(), idxEntry.ver, idxEntry.offset, fLogNameStr);
       goto _err;
     }
-    if (taosWriteFile(pIdxFile, &idxEntry, sizeof(SWalIdxEntry)) < 0) {
-      terrno = TAOS_SYSTEM_ERROR(errno);
-      wError("vgId:%d, failed to append file since %s. file:%s", pWal->cfg.vgId, terrstr(), fnameStr);
-      goto _err;
-    }
+    // if (taosWriteFile(pIdxFile, &idxEntry, sizeof(SWalIdxEntry)) < 0) {
+    //   terrno = TAOS_SYSTEM_ERROR(errno);
+    //   wError("vgId:%d, failed to append file since %s. file:%s", pWal->cfg.vgId, terrstr(), fnameStr);
+    //   goto _err;
+    // }
     count++;
   }
 
-  if (taosFsyncFile(pIdxFile) < 0) {
-    terrno = TAOS_SYSTEM_ERROR(errno);
-    wError("vgId:%d, faild to fsync file since %s. file:%s", pWal->cfg.vgId, terrstr(), fnameStr);
-    goto _err;
-  }
+  // if (taosFsyncFile(pIdxFile) < 0) {
+  //   terrno = TAOS_SYSTEM_ERROR(errno);
+  //   wError("vgId:%d, faild to fsync file since %s. file:%s", pWal->cfg.vgId, terrstr(), fnameStr);
+  //   goto _err;
+  // }
 
   if (count > 0) {
     wInfo("vgId:%d, rebuilt %" PRId64 " wal idx entries until lastVer: %" PRId64, pWal->cfg.vgId, count,
@@ -880,17 +880,17 @@ int walSaveMeta(SWal* pWal) {
   int  n;
 
   // fsync the idx and log file at first to ensure validity of meta
-  if (taosFsyncFile(pWal->pIdxFile) < 0) {
-    wError("vgId:%d, failed to sync idx file due to %s", pWal->cfg.vgId, strerror(errno));
-    terrno = TAOS_SYSTEM_ERROR(errno);
-    return -1;
-  }
+  // if (taosFsyncFile(pWal->pIdxFile) < 0) {
+  //   wError("vgId:%d, failed to sync idx file due to %s", pWal->cfg.vgId, strerror(errno));
+  //   terrno = TAOS_SYSTEM_ERROR(errno);
+  //   return -1;
+  // }
 
-  if (taosFsyncFile(pWal->pLogFile) < 0) {
-    wError("vgId:%d, failed to sync log file due to %s", pWal->cfg.vgId, strerror(errno));
-    terrno = TAOS_SYSTEM_ERROR(errno);
-    return -1;
-  }
+  // if (taosFsyncFile(pWal->pLogFile) < 0) {
+  //   wError("vgId:%d, failed to sync log file due to %s", pWal->cfg.vgId, strerror(errno));
+  //   terrno = TAOS_SYSTEM_ERROR(errno);
+  //   return -1;
+  // }
 
   // update synced offset
   (void)walUpdateSyncedOffset(pWal);
@@ -910,17 +910,17 @@ int walSaveMeta(SWal* pWal) {
 
   char* serialized = walMetaSerialize(pWal);
   int   len = strlen(serialized);
-  if (len != taosWriteFile(pMetaFile, serialized, len)) {
-    wError("vgId:%d, failed to write file due to %s. file:%s", pWal->cfg.vgId, strerror(errno), tmpFnameStr);
-    terrno = TAOS_SYSTEM_ERROR(errno);
-    goto _err;
-  }
+  // if (len != taosWriteFile(pMetaFile, serialized, len)) {
+  //   wError("vgId:%d, failed to write file due to %s. file:%s", pWal->cfg.vgId, strerror(errno), tmpFnameStr);
+  //   terrno = TAOS_SYSTEM_ERROR(errno);
+  //   goto _err;
+  // }
 
-  if (taosFsyncFile(pMetaFile) < 0) {
-    wError("vgId:%d, failed to sync file due to %s. file:%s", pWal->cfg.vgId, strerror(errno), tmpFnameStr);
-    terrno = TAOS_SYSTEM_ERROR(errno);
-    goto _err;
-  }
+  // if (taosFsyncFile(pMetaFile) < 0) {
+  //   wError("vgId:%d, failed to sync file due to %s. file:%s", pWal->cfg.vgId, strerror(errno), tmpFnameStr);
+  //   terrno = TAOS_SYSTEM_ERROR(errno);
+  //   goto _err;
+  // }
 
   if (taosCloseFile(&pMetaFile) < 0) {
     wError("vgId:%d, failed to close file due to %s. file:%s", pWal->cfg.vgId, strerror(errno), tmpFnameStr);

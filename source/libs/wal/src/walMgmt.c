@@ -261,19 +261,19 @@ static void walUpdateSeq() {
 }
 
 static void walFsyncAll() {
-  SWal *pWal = taosIterateRef(tsWal.refSetId, 0);
-  while (pWal) {
-    if (walNeedFsync(pWal)) {
-      wTrace("vgId:%d, do fsync, level:%d seq:%d rseq:%d", pWal->cfg.vgId, pWal->cfg.level, pWal->fsyncSeq,
-             atomic_load_32(&tsWal.seq));
-      int32_t code = taosFsyncFile(pWal->pLogFile);
-      if (code != 0) {
-        wError("vgId:%d, file:%" PRId64 ".log, failed to fsync since %s", pWal->cfg.vgId, walGetLastFileFirstVer(pWal),
-               strerror(errno));
-      }
-    }
-    pWal = taosIterateRef(tsWal.refSetId, pWal->refId);
-  }
+  // SWal *pWal = taosIterateRef(tsWal.refSetId, 0);
+  // while (pWal) {
+  //   if (walNeedFsync(pWal)) {
+  //     wTrace("vgId:%d, do fsync, level:%d seq:%d rseq:%d", pWal->cfg.vgId, pWal->cfg.level, pWal->fsyncSeq,
+  //            atomic_load_32(&tsWal.seq));
+  //     int32_t code = taosFsyncFile(pWal->pLogFile);
+  //     if (code != 0) {
+  //       wError("vgId:%d, file:%" PRId64 ".log, failed to fsync since %s", pWal->cfg.vgId, walGetLastFileFirstVer(pWal),
+  //              strerror(errno));
+  //     }
+  //   }
+  //   pWal = taosIterateRef(tsWal.refSetId, pWal->refId);
+  // }
 }
 
 static void *walThreadFunc(void *param) {

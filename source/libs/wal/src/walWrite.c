@@ -396,11 +396,11 @@ int32_t walRollImpl(SWal *pWal) {
   int32_t code = 0;
 
   if (pWal->pIdxFile != NULL) {
-    code = taosFsyncFile(pWal->pIdxFile);
-    if (code != 0) {
-      terrno = TAOS_SYSTEM_ERROR(errno);
-      goto END;
-    }
+    // code = taosFsyncFile(pWal->pIdxFile);
+    // if (code != 0) {
+    //   terrno = TAOS_SYSTEM_ERROR(errno);
+    //   goto END;
+    // }
     code = taosCloseFile(&pWal->pIdxFile);
     if (code != 0) {
       terrno = TAOS_SYSTEM_ERROR(errno);
@@ -409,11 +409,11 @@ int32_t walRollImpl(SWal *pWal) {
   }
 
   if (pWal->pLogFile != NULL) {
-    code = taosFsyncFile(pWal->pLogFile);
-    if (code != 0) {
-      terrno = TAOS_SYSTEM_ERROR(errno);
-      goto END;
-    }
+    // code = taosFsyncFile(pWal->pLogFile);
+    // if (code != 0) {
+    //   terrno = TAOS_SYSTEM_ERROR(errno);
+    //   goto END;
+    // }
     code = taosCloseFile(&pWal->pLogFile);
     if (code != 0) {
       terrno = TAOS_SYSTEM_ERROR(errno);
@@ -471,21 +471,21 @@ static int32_t walWriteIndex(SWal *pWal, int64_t ver, int64_t offset) {
   wDebug("vgId:%d, write index, index:%" PRId64 ", offset:%" PRId64 ", at %" PRId64, pWal->cfg.vgId, ver, offset,
          idxOffset);
 
-  int64_t size = taosWriteFile(pWal->pIdxFile, &entry, sizeof(SWalIdxEntry));
-  if (size != sizeof(SWalIdxEntry)) {
-    wError("vgId:%d, failed to write idx entry due to %s. ver:%" PRId64, pWal->cfg.vgId, strerror(errno), ver);
-    terrno = TAOS_SYSTEM_ERROR(errno);
-    return -1;
-  }
+  // int64_t size = taosWriteFile(pWal->pIdxFile, &entry, sizeof(SWalIdxEntry));
+  // if (size != sizeof(SWalIdxEntry)) {
+  //   wError("vgId:%d, failed to write idx entry due to %s. ver:%" PRId64, pWal->cfg.vgId, strerror(errno), ver);
+  //   terrno = TAOS_SYSTEM_ERROR(errno);
+  //   return -1;
+  // }
 
-  // check alignment of idx entries
-  int64_t endOffset = taosLSeekFile(pWal->pIdxFile, 0, SEEK_END);
-  if (endOffset < 0) {
-    wFatal("vgId:%d, failed to seek end of WAL idxfile due to %s. ver:%" PRId64 "", pWal->cfg.vgId, strerror(errno),
-           ver);
-    taosMsleep(100);
-    exit(EXIT_FAILURE);
-  }
+  // // check alignment of idx entries
+  // int64_t endOffset = taosLSeekFile(pWal->pIdxFile, 0, SEEK_END);
+  // if (endOffset < 0) {
+  //   wFatal("vgId:%d, failed to seek end of WAL idxfile due to %s. ver:%" PRId64 "", pWal->cfg.vgId, strerror(errno),
+  //          ver);
+  //   taosMsleep(100);
+  //   exit(EXIT_FAILURE);
+  // }
   return 0;
 }
 
@@ -515,13 +515,13 @@ static FORCE_INLINE int32_t walWriteImpl(SWal *pWal, int64_t index, tmsg_t msgTy
     goto END;
   }
 
-  if (taosWriteFile(pWal->pLogFile, &pWal->writeHead, sizeof(SWalCkHead)) != sizeof(SWalCkHead)) {
-    terrno = TAOS_SYSTEM_ERROR(errno);
-    wError("vgId:%d, file:%" PRId64 ".log, failed to write since %s", pWal->cfg.vgId, walGetLastFileFirstVer(pWal),
-           strerror(errno));
-    code = -1;
-    goto END;
-  }
+  // if (taosWriteFile(pWal->pLogFile, &pWal->writeHead, sizeof(SWalCkHead)) != sizeof(SWalCkHead)) {
+  //   terrno = TAOS_SYSTEM_ERROR(errno);
+  //   wError("vgId:%d, file:%" PRId64 ".log, failed to write since %s", pWal->cfg.vgId, walGetLastFileFirstVer(pWal),
+  //          strerror(errno));
+  //   code = -1;
+  //   goto END;
+  // }
 
   int32_t cyptedBodyLen = plainBodyLen;
   char* buf = (char*)body;
@@ -565,17 +565,17 @@ static FORCE_INLINE int32_t walWriteImpl(SWal *pWal, int64_t index, tmsg_t msgTy
     buf = newBodyEncrypted;
   }
   
-  if (taosWriteFile(pWal->pLogFile, (char *)buf, cyptedBodyLen) != cyptedBodyLen) {
-    terrno = TAOS_SYSTEM_ERROR(errno);
-    wError("vgId:%d, file:%" PRId64 ".log, failed to write since %s", pWal->cfg.vgId, walGetLastFileFirstVer(pWal),
-           strerror(errno));
-    code = -1;
-    if(pWal->cfg.encryptAlgorithm == DND_CA_SM4){
-      taosMemoryFreeClear(newBody);
-      taosMemoryFreeClear(newBodyEncrypted);
-    }
-    goto END;
-  }
+  // if (taosWriteFile(pWal->pLogFile, (char *)buf, cyptedBodyLen) != cyptedBodyLen) {
+  //   terrno = TAOS_SYSTEM_ERROR(errno);
+  //   wError("vgId:%d, file:%" PRId64 ".log, failed to write since %s", pWal->cfg.vgId, walGetLastFileFirstVer(pWal),
+  //          strerror(errno));
+  //   code = -1;
+  //   if(pWal->cfg.encryptAlgorithm == DND_CA_SM4){
+  //     taosMemoryFreeClear(newBody);
+  //     taosMemoryFreeClear(newBodyEncrypted);
+  //   }
+  //   goto END;
+  // }
 
   if(pWal->cfg.encryptAlgorithm == DND_CA_SM4){
     taosMemoryFreeClear(newBody);
@@ -693,13 +693,13 @@ int32_t walWrite(SWal *pWal, int64_t index, tmsg_t msgType, const void *body, in
 }
 
 void walFsync(SWal *pWal, bool forceFsync) {
-  taosThreadMutexLock(&pWal->mutex);
-  if (forceFsync || (pWal->cfg.level == TAOS_WAL_FSYNC && pWal->cfg.fsyncPeriod == 0)) {
-    wTrace("vgId:%d, fileId:%" PRId64 ".log, do fsync", pWal->cfg.vgId, walGetCurFileFirstVer(pWal));
-    if (taosFsyncFile(pWal->pLogFile) < 0) {
-      wError("vgId:%d, file:%" PRId64 ".log, fsync failed since %s", pWal->cfg.vgId, walGetCurFileFirstVer(pWal),
-             strerror(errno));
-    }
-  }
-  taosThreadMutexUnlock(&pWal->mutex);
+  // taosThreadMutexLock(&pWal->mutex);
+  // if (forceFsync || (pWal->cfg.level == TAOS_WAL_FSYNC && pWal->cfg.fsyncPeriod == 0)) {
+  //   wTrace("vgId:%d, fileId:%" PRId64 ".log, do fsync", pWal->cfg.vgId, walGetCurFileFirstVer(pWal));
+  //   if (taosFsyncFile(pWal->pLogFile) < 0) {
+  //     wError("vgId:%d, file:%" PRId64 ".log, fsync failed since %s", pWal->cfg.vgId, walGetCurFileFirstVer(pWal),
+  //            strerror(errno));
+  //   }
+  // }
+  // taosThreadMutexUnlock(&pWal->mutex);
 }
