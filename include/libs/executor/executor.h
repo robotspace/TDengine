@@ -68,12 +68,16 @@ typedef enum {
 
 /**
  * Create the exec task for stream mode
- * @param pMsg
- * @param SReadHandle
+ * @param msg
+ * @param readers
  * @param vgId
+ * @param taskId
+ * @param dstUid
+ * @param pDstName
  * @return
  */
-qTaskInfo_t qCreateStreamExecTaskInfo(void* msg, SReadHandle* readers, int32_t vgId, int32_t taskId);
+qTaskInfo_t qCreateStreamExecTaskInfo(void* msg, SReadHandle* readers, int32_t vgId, int32_t taskId, int64_t dstUid,
+                                      const char* pDstName);
 
 /**
  * Create the exec task for queue mode
@@ -217,6 +221,7 @@ int32_t qStreamSourceScanParamForHistoryScanStep2(qTaskInfo_t tinfo, SVersionRan
 int32_t qStreamRecoverFinish(qTaskInfo_t tinfo);
 bool    qStreamScanhistoryFinished(qTaskInfo_t tinfo);
 int32_t qStreamInfoResetTimewindowFilter(qTaskInfo_t tinfo);
+void    qStreamSetDstTableInfo(qTaskInfo_t tinfo, int64_t uid, const char* pName);
 void    resetTaskInfo(qTaskInfo_t tinfo);
 
 int32_t qStreamOperatorReleaseState(qTaskInfo_t tInfo);

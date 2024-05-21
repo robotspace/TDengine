@@ -75,7 +75,8 @@ int32_t tqExpandStreamTask(SStreamTask* pTask, SStreamMeta* pMeta, void* pVnode)
   initStorageAPI(&handle.api);
 
   if (pTask->info.taskLevel == TASK_LEVEL__SOURCE || pTask->info.taskLevel == TASK_LEVEL__AGG) {
-    pTask->exec.pExecutor = qCreateStreamExecTaskInfo(pTask->exec.qmsg, &handle, vgId, pTask->id.taskId);
+    pTask->exec.pExecutor = qCreateStreamExecTaskInfo(pTask->exec.qmsg, &handle, vgId, pTask->id.taskId,
+                                                      pTask->info.dstSTableId, pTask->info.dstSTableName);
     if (pTask->exec.pExecutor == NULL) {
       tqError("s-task:%s failed to create exec taskInfo, failed to expand task", pTask->id.idStr);
       return -1;

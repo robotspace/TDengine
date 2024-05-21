@@ -489,8 +489,8 @@ int32_t mndPersistTaskDeployReq(STrans *pTrans, SStreamTask *pTask) {
   SEncoder encoder;
   tEncoderInit(&encoder, NULL, 0);
 
-  if (pTask->ver < SSTREAM_TASK_SUBTABLE_CHANGED_VER){
-    pTask->ver = SSTREAM_TASK_VER;
+  if (pTask->ver < STREAM_TASK_WITHOUT_DST_UID) {
+    pTask->ver = STREAM_TASK_VER;
   }
   tEncodeStreamTask(&encoder, pTask);
 

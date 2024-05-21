@@ -492,13 +492,11 @@ int32_t streamSearchAndAddBlock(SStreamTask* pTask, SStreamDispatchReq* pReqs, S
   } else {
     char ctbName[TSDB_TABLE_FNAME_LEN] = {0};
     if (pDataBlock->info.parTbName[0]) {
-      if(pTask->subtableWithoutMd5 != 1 &&
-          !isAutoTableName(pDataBlock->info.parTbName) &&
-          !alreadyAddGroupId(pDataBlock->info.parTbName) &&
-          groupId != 0){
-        if(pTask->ver == SSTREAM_TASK_SUBTABLE_CHANGED_VER){
+      if (pTask->subtableWithoutMd5 != 1 && !isAutoTableName(pDataBlock->info.parTbName) &&
+          !alreadyAddGroupId(pDataBlock->info.parTbName) && (groupId != 0)) {
+        if (pTask->ver == STREAM_TASK_SUBTABLE_CHANGED_VER) {
           buildCtbNameAddGroupId(NULL, pDataBlock->info.parTbName, groupId);
-        }else if(pTask->ver > SSTREAM_TASK_SUBTABLE_CHANGED_VER) {
+        } else if (pTask->ver > STREAM_TASK_SUBTABLE_CHANGED_VER) {
           buildCtbNameAddGroupId(pTask->outputInfo.shuffleDispatcher.stbFullName, pDataBlock->info.parTbName, groupId);
         }
       }

@@ -91,7 +91,8 @@ static SStreamChildEpInfo* createStreamTaskEpInfo(const SStreamTask* pTask) {
 }
 
 SStreamTask* tNewStreamTask(int64_t streamId, int8_t taskLevel, SEpSet* pEpset, bool fillHistory, int64_t triggerParam,
-                            SArray* pTaskList, bool hasFillhistory, int8_t subtableWithoutMd5) {
+                            SArray* pTaskList, bool hasFillhistory, int8_t subtableWithoutMd5, int64_t dstUid,
+                            const char* pDstTableName) {
   SStreamTask* pTask = (SStreamTask*)taosMemoryCalloc(1, sizeof(SStreamTask));
   if (pTask == NULL) {
     terrno = TSDB_CODE_OUT_OF_MEMORY;
@@ -100,13 +101,15 @@ SStreamTask* tNewStreamTask(int64_t streamId, int8_t taskLevel, SEpSet* pEpset, 
     return NULL;
   }
 
-  pTask->ver = SSTREAM_TASK_VER;
+  pTask->ver = STREAM_TASK_VER;
   pTask->id.taskId = tGenIdPI32();
   pTask->id.streamId = streamId;
 
   pTask->info.taskLevel = taskLevel;
   pTask->info.fillHistory = fillHistory;
   pTask->info.triggerParam = triggerParam;
+  pTask->info.dstSTableId = dstUid;
+  pTask->info.dstSTableName = taosStrdup(pDstTableName);
   pTask->subtableWithoutMd5 = subtableWithoutMd5;
 
   pTask->status.pSM = streamCreateStateMachine(pTask);
@@ -174,7 +177,7 @@ int32_t tDecodeStreamTaskId(SDecoder* pDecoder, STaskId* pTaskId) {
   int64_t ver;
   if (tStartDecode(pDecoder) < 0) return -1;
   if (tDecodeI64(pDecoder, &ver) < 0) return -1;
-  if (ver <= SSTREAM_TASK_INCOMPATIBLE_VER) return -1;
+  if (ver <= STREAM_TASK_INCOMPATIBLE_VER) return -1;
 
   if (tDecodeI64(pDecoder, &pTaskId->streamId) < 0) return -1;
 
@@ -277,6 +280,10 @@ void tFreeStreamTask(SStreamTask* pTask) {
 
   if (pTask->id.idStr != NULL) {
     taosMemoryFree((void*)pTask->id.idStr);
+  }
+
+  if (pTask->info.dstSTableName != NULL) {
+    taosMemoryFree(pTask->info.dstSTableName);
   }
 
   if (pTask->pNameMap) {

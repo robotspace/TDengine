@@ -309,7 +309,8 @@ qTaskInfo_t qCreateQueueExecTaskInfo(void* msg, SReadHandle* pReaderHandle, int3
   return pTaskInfo;
 }
 
-qTaskInfo_t qCreateStreamExecTaskInfo(void* msg, SReadHandle* readers, int32_t vgId, int32_t taskId) {
+qTaskInfo_t qCreateStreamExecTaskInfo(void* msg, SReadHandle* readers, int32_t vgId, int32_t taskId, int64_t dstUid,
+                                      const char* pDstName) {
   if (msg == NULL) {
     return NULL;
   }
@@ -331,6 +332,7 @@ qTaskInfo_t qCreateStreamExecTaskInfo(void* msg, SReadHandle* readers, int32_t v
   }
 
   qStreamInfoResetTimewindowFilter(pTaskInfo);
+  qStreamSetDstTableInfo(pTaskInfo, dstUid, pDstName);
   return pTaskInfo;
 }
 
@@ -1063,6 +1065,12 @@ int32_t qStreamInfoResetTimewindowFilter(qTaskInfo_t tinfo) {
   return 0;
 }
 
+void qStreamSetDstTableInfo(qTaskInfo_t tinfo, int64_t uid, const char* pName) {
+  SExecTaskInfo* pTaskInfo = (SExecTaskInfo*) tinfo;
+  pTaskInfo->streamInfo.dstUid = uid;
+  pTaskInfo->streamInfo.dstTableName = taosStrdup(pName);
+}
+
 void* qExtractReaderFromStreamScanner(void* scanner) {
   SStreamScanInfo* pInfo = scanner;
   return (void*)pInfo->tqReader;
@@ -1138,7 +1146,7 @@ int32_t qStreamPrepareScan(qTaskInfo_t tinfo, STqOffsetVal* pOffset, int8_t subT
   SOperatorInfo* pOperator = pTaskInfo->pRoot;
   const char*    id = GET_TASKID(pTaskInfo);
 
-  if(subType == TOPIC_SUB_TYPE__COLUMN && pOffset->type == TMQ_OFFSET__LOG){
+  if (subType == TOPIC_SUB_TYPE__COLUMN && pOffset->type == TMQ_OFFSET__LOG) {
     pOperator = extractOperatorInTree(pOperator, QUERY_NODE_PHYSICAL_PLAN_STREAM_SCAN, id);
     if (pOperator == NULL) {
       return -1;

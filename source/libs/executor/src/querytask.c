@@ -210,6 +210,7 @@ SSchemaWrapper* extractQueriedColumnSchema(SScanPhysiNode* pScanNode) {
 }
 
 static void cleanupStreamInfo(SStreamTaskInfo* pStreamInfo) {
+  taosMemoryFreeClear(pStreamInfo->dstTableName);
   tDeleteSchemaWrapper(pStreamInfo->schema);
   tOffsetDestroy(&pStreamInfo->currentOffset);
 }

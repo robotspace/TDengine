@@ -242,8 +242,13 @@ static int32_t doAddSinkTask(SStreamObj* pStream, SMnode* pMnode, SVgObj* pVgrou
   int64_t  uid = (isFillhistory) ? pStream->hTaskUid : pStream->uid;
   SArray** pTaskList = (isFillhistory) ? taosArrayGetLast(pStream->pHTasksList) : taosArrayGetLast(pStream->tasks);
 
-  SStreamTask* pTask = tNewStreamTask(uid, TASK_LEVEL__SINK, pEpset, isFillhistory, 0, *pTaskList,
-                                      pStream->conf.fillHistory, pStream->subTableWithoutMd5);
+  SName    name = {0};
+  tNameFromString(&name, pStream->targetSTbName, T_NAME_ACCT | T_NAME_DB | T_NAME_TABLE);
+
+  SStreamTask* pTask =
+      tNewStreamTask(uid, TASK_LEVEL__SINK, pEpset, isFillhistory, 0, *pTaskList, pStream->conf.fillHistory,
+                     pStream->subTableWithoutMd5, pStream->targetStbUid, tNameGetTableName(&name));
+
   if (pTask == NULL) {
     terrno = TSDB_CODE_OUT_OF_MEMORY;
     return terrno;
@@ -357,9 +362,12 @@ static SStreamTask* buildSourceTask(SStreamObj* pStream, SEpSet* pEpset, bool is
   uint64_t uid = (isFillhistory) ? pStream->hTaskUid : pStream->uid;
   SArray** pTaskList = (isFillhistory) ? taosArrayGetLast(pStream->pHTasksList) : taosArrayGetLast(pStream->tasks);
 
+  SName    name = {0};
+  tNameFromString(&name, pStream->targetSTbName, T_NAME_ACCT | T_NAME_DB | T_NAME_TABLE);
+
   SStreamTask* pTask =
       tNewStreamTask(uid, TASK_LEVEL__SOURCE, pEpset, isFillhistory, useTriggerParam ? pStream->conf.triggerParam : 0,
-                     *pTaskList, pStream->conf.fillHistory, pStream->subTableWithoutMd5);
+                     *pTaskList, pStream->conf.fillHistory, pStream->subTableWithoutMd5, pStream->targetStbUid, tNameGetTableName(&name));
   if (pTask == NULL) {
     return NULL;
   }
@@ -502,9 +510,13 @@ static SStreamTask* buildAggTask(SStreamObj* pStream, SEpSet* pEpset, bool isFil
   uint64_t uid = (isFillhistory) ? pStream->hTaskUid : pStream->uid;
   SArray** pTaskList = (isFillhistory) ? taosArrayGetLast(pStream->pHTasksList) : taosArrayGetLast(pStream->tasks);
 
-  SStreamTask* pAggTask =
-      tNewStreamTask(uid, TASK_LEVEL__AGG, pEpset, isFillhistory, useTriggerParam ? pStream->conf.triggerParam : 0,
-                     *pTaskList, pStream->conf.fillHistory, pStream->subTableWithoutMd5);
+  SName name = {0};
+  tNameFromString(&name, pStream->targetSTbName, T_NAME_ACCT | T_NAME_DB | T_NAME_TABLE);
+
+  SStreamTask* pAggTask = tNewStreamTask(
+      uid, TASK_LEVEL__AGG, pEpset, isFillhistory, useTriggerParam ? pStream->conf.triggerParam : 0, *pTaskList,
+      pStream->conf.fillHistory, pStream->subTableWithoutMd5, pStream->targetStbUid, tNameGetTableName(&name));
+
   if (pAggTask == NULL) {
     terrno = TSDB_CODE_OUT_OF_MEMORY;
     return NULL;

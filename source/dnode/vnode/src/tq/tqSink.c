@@ -265,7 +265,7 @@ static int32_t doBuildAndSendCreateTableMsg(SVnode* pVnode, char* stbFullName, S
     }
 
     setCreateTableMsgTableName(pCreateTbReq, pDataBlock, stbFullName, gid,
-                               pTask->ver >= SSTREAM_TASK_SUBTABLE_CHANGED_VER && pTask->subtableWithoutMd5 != 1);
+                               pTask->ver >= STREAM_TASK_SUBTABLE_CHANGED_VER && pTask->subtableWithoutMd5 != 1);
 
     taosArrayPush(reqs.pArray, pCreateTbReq);
     tqDebug("s-task:%s build create table:%s msg complete", pTask->id.idStr, pCreateTbReq->name);
@@ -401,7 +401,7 @@ int32_t doBuildAndSendDeleteMsg(SVnode* pVnode, char* stbFullName, SSDataBlock* 
   SBatchDeleteReq deleteReq = {.suid = suid, .deleteReqs = taosArrayInit(0, sizeof(SSingleDeleteReq))};
 
   int32_t code = tqBuildDeleteReq(pVnode->pTq, stbFullName, pDataBlock, &deleteReq, pTask->id.idStr,
-                                  pTask->ver >= SSTREAM_TASK_SUBTABLE_CHANGED_VER && pTask->subtableWithoutMd5 != 1);
+                                  pTask->ver >= STREAM_TASK_SUBTABLE_CHANGED_VER && pTask->subtableWithoutMd5 != 1);
   if (code != TSDB_CODE_SUCCESS) {
     return code;
   }
@@ -712,12 +712,12 @@ int32_t setDstTableDataUid(SVnode* pVnode, SStreamTask* pTask, SSDataBlock* pDat
       memset(dstTableName, 0, TSDB_TABLE_NAME_LEN);
       buildCtbNameByGroupIdImpl(stbFullName, groupId, dstTableName);
     } else {
-      if (pTask->subtableWithoutMd5 != 1 && !isAutoTableName(dstTableName) &&
-          !alreadyAddGroupId(dstTableName) && groupId != 0) {
+      if (pTask->subtableWithoutMd5 != 1 && !isAutoTableName(dstTableName) && !alreadyAddGroupId(dstTableName) &&
+          groupId != 0) {
         tqDebug("s-task:%s append groupId:%" PRId64 " for generated dstTable:%s", id, groupId, dstTableName);
-        if(pTask->ver == SSTREAM_TASK_SUBTABLE_CHANGED_VER){
+        if (pTask->ver == STREAM_TASK_SUBTABLE_CHANGED_VER) {
           buildCtbNameAddGroupId(NULL, dstTableName, groupId);
-        }else if(pTask->ver > SSTREAM_TASK_SUBTABLE_CHANGED_VER && stbFullName) {
+        } else if (pTask->ver > STREAM_TASK_SUBTABLE_CHANGED_VER && stbFullName) {
           buildCtbNameAddGroupId(stbFullName, dstTableName, groupId);
         }
       }
@@ -763,7 +763,7 @@ int32_t setDstTableDataUid(SVnode* pVnode, SStreamTask* pTask, SSDataBlock* pDat
       pTableData->flags = SUBMIT_REQ_AUTO_CREATE_TABLE;
       pTableData->pCreateTbReq =
           buildAutoCreateTableReq(stbFullName, suid, pTSchema->numOfCols + 1, pDataBlock, pTagArray,
-                                  pTask->ver >= SSTREAM_TASK_SUBTABLE_CHANGED_VER && pTask->subtableWithoutMd5 != 1);
+                                  pTask->ver >= STREAM_TASK_SUBTABLE_CHANGED_VER && pTask->subtableWithoutMd5 != 1);
       taosArrayDestroy(pTagArray);
 
       if (pTableData->pCreateTbReq == NULL) {

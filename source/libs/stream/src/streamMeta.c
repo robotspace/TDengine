@@ -171,9 +171,9 @@ int32_t streamMetaCheckBackendCompatible(SStreamMeta* pMeta) {
     if (tDecodeStreamTaskChkInfo(&decoder, &info) < 0) {
       continue;
     }
-    if (info.msgVer <= SSTREAM_TASK_INCOMPATIBLE_VER) {
+    if (info.msgVer <= STREAM_TASK_INCOMPATIBLE_VER) {
       ret = STREAM_STATA_NO_COMPATIBLE;
-    } else if (info.msgVer >= SSTREAM_TASK_NEED_CONVERT_VER) {
+    } else if (info.msgVer >= STREAM_TASK_NEED_CONVERT_VER) {
       ret = STREAM_STATA_NEED_CONVERT;
     }
     tDecoderClear(&decoder);
@@ -548,14 +548,16 @@ int32_t streamMetaSaveTask(SStreamMeta* pMeta, SStreamTask* pTask) {
   if (code < 0) {
     return -1;
   }
+
   buf = taosMemoryCalloc(1, len);
   if (buf == NULL) {
     return -1;
   }
 
-  if (pTask->ver < SSTREAM_TASK_SUBTABLE_CHANGED_VER){
-    pTask->ver = SSTREAM_TASK_VER;
+  if (pTask->ver < STREAM_TASK_SUBTABLE_CHANGED_VER) {
+    pTask->ver = STREAM_TASK_VER;
   }
+
   SEncoder encoder = {0};
   tEncoderInit(&encoder, buf, len);
   tEncodeStreamTask(&encoder, pTask);
@@ -871,6 +873,7 @@ void streamMetaLoadAllTasks(SStreamMeta* pMeta) {
           vgId, tsDataDir);
       break;
     }
+
     tDecoderClear(&decoder);
 
     if (pTask->status.taskStatus == TASK_STATUS__DROPPING) {

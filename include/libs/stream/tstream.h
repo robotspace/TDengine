@@ -64,10 +64,11 @@ typedef struct SStreamQueue     SStreamQueue;
 typedef struct SStreamTaskSM    SStreamTaskSM;
 typedef struct SStreamQueueItem SStreamQueueItem;
 
-#define SSTREAM_TASK_VER                  4
-#define SSTREAM_TASK_INCOMPATIBLE_VER     1
-#define SSTREAM_TASK_NEED_CONVERT_VER     2
-#define SSTREAM_TASK_SUBTABLE_CHANGED_VER 3
+#define STREAM_TASK_VER                  5
+#define STREAM_TASK_INCOMPATIBLE_VER     1
+#define STREAM_TASK_NEED_CONVERT_VER     2
+#define STREAM_TASK_SUBTABLE_CHANGED_VER 3
+#define STREAM_TASK_WITHOUT_DST_UID      4
 
 enum {
   STREAM_STATUS__NORMAL = 0,
@@ -298,6 +299,8 @@ typedef struct SDataRange {
 } SDataRange;
 
 typedef struct SSTaskBasicInfo {
+  int64_t dstSTableId;
+  char*   dstSTableName;
   int32_t nodeId;  // vgroup id or snode id
   SEpSet  epSet;
   SEpSet  mnodeEpset;  // mnode epset for send heartbeat
@@ -518,7 +521,8 @@ typedef struct STaskUpdateEntry {
 } STaskUpdateEntry;
 
 SStreamTask* tNewStreamTask(int64_t streamId, int8_t taskLevel, SEpSet* pEpset, bool fillHistory, int64_t triggerParam,
-                            SArray* pTaskList, bool hasFillhistory, int8_t subtableWithoutMd5);
+                            SArray* pTaskList, bool hasFillhistory, int8_t subtableWithoutMd5, int64_t dstUid,
+                            const char* pDstTableName);
 int32_t      tEncodeStreamTask(SEncoder* pEncoder, const SStreamTask* pTask);
 int32_t      tDecodeStreamTask(SDecoder* pDecoder, SStreamTask* pTask);
 void         tFreeStreamTask(SStreamTask* pTask);
@@ -719,6 +723,7 @@ SArray* streamMetaSendMsgBeforeCloseTasks(SStreamMeta* pMeta);
 void    streamMetaUpdateStageRole(SStreamMeta* pMeta, int64_t stage, bool isLeader);
 void    streamMetaLoadAllTasks(SStreamMeta* pMeta);
 int32_t streamMetaStartAllTasks(SStreamMeta* pMeta);
+int32_t streamMetaUpgradeAllTasks(SStreamMeta* pMeta);
 int32_t streamMetaStopAllTasks(SStreamMeta* pMeta);
 int32_t streamMetaStartOneTask(SStreamMeta* pMeta, int64_t streamId, int32_t taskId);
 bool    streamMetaAllTasksReady(const SStreamMeta* pMeta);
