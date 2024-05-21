@@ -1092,6 +1092,7 @@ static int32_t vnodeProcessCreateTbReq(SVnode *pVnode, int64_t ver, void *pReq, 
     if (vnodeValidateTableHash(pVnode, tbName) < 0) {
       cRsp.code = TSDB_CODE_VND_HASH_MISMATCH;
       taosArrayPush(rsp.pArray, &cRsp);
+      vError("vgId:%d create-table msg discard due to hash-code mismatch, name:%s", TD_VID(pVnode), tbName);
       continue;
     }
 
