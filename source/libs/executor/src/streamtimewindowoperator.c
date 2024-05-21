@@ -1404,6 +1404,7 @@ static SSDataBlock* doStreamFinalIntervalAgg(SOperatorInfo* pOperator) {
                       pInfo->numOfChild, pOperator);
       continue;
     } else if (pBlock->info.type == STREAM_CREATE_CHILD_TABLE) {
+      printDataBlock(pBlock, getStreamOpName(pOperator->operatorType), GET_TASKID(pTaskInfo));
       return pBlock;
     } else if (pBlock->info.type == STREAM_CHECKPOINT) {
       pAPI->stateStore.streamStateCommit(pInfo->pState);

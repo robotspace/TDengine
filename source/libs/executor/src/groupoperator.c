@@ -1076,7 +1076,8 @@ static SSDataBlock* buildStreamPartitionResult(SOperatorInfo* pOperator) {
 }
 
 void appendCreateTableRow(void* pState, SExprSupp* pTableSup, SExprSupp* pTagSup, uint64_t groupId,
-                          SSDataBlock* pSrcBlock, int32_t rowId, SSDataBlock* pDestBlock, SStateStore* pAPI) {
+                          SSDataBlock* pSrcBlock, int32_t rowId, SSDataBlock* pDestBlock, SStateStore* pAPI,
+                          const char* pSuffix) {
   void* pValue = NULL;
   if (pAPI->streamStateGetParName(pState, groupId, &pValue) != 0) {
     SSDataBlock* pTmpBlock = blockCopyOneRow(pSrcBlock, rowId);
@@ -1095,6 +1096,17 @@ void appendCreateTableRow(void* pState, SExprSupp* pTableSup, SExprSupp* pTagSup
         void* pData = colDataGetData(pTbCol, pDestBlock->info.rows - 1);
         len = TMIN(varDataLen(pData), TSDB_TABLE_NAME_LEN - 1);
         memcpy(tbName, varDataVal(pData), len);
+        qDebug("===stream=== get dest super table name:%s,size:%ld", pSuffix, strlen(pSuffix));
+        char fullSuffix[TSDB_TABLE_NAME_LEN];
+        snprintf(fullSuffix, TSDB_TABLE_NAME_LEN - 1, "_%s_%"PRIu64, pSuffix, groupId);
+        if (TSDB_TABLE_NAME_LEN - 1 - strlen(tbName) > 0) {
+          strncat(tbName, fullSuffix, TSDB_TABLE_NAME_LEN - 1 - strlen(tbName));
+        }
+        for (int i = 0; i < strlen(tbName); i++) {
+          if (tbName[i] == '.') {
+            tbName[i] = '_';
+          }
+        }
         pAPI->streamStatePutParName(pState, groupId, tbName);
       }
       memcpy(pTmpBlock->info.parTbName, tbName, len);
@@ -1137,8 +1149,8 @@ static SSDataBlock* buildStreamCreateTableResult(SOperatorInfo* pOperator) {
   if (pInfo->pTbNameIte != NULL) {
     SPartitionDataInfo* pParInfo = (SPartitionDataInfo*)pInfo->pTbNameIte;
     int32_t             rowId = *(int32_t*)taosArrayGet(pParInfo->rowIds, 0);
-    appendCreateTableRow(pTask->streamInfo.pState, &pInfo->tbnameCalSup, &pInfo->tagCalSup,
-                         pParInfo->groupId, pSrc, rowId, pInfo->pCreateTbRes, &pTask->storageAPI.stateStore);
+    appendCreateTableRow(pTask->streamInfo.pState, &pInfo->tbnameCalSup, &pInfo->tagCalSup, pParInfo->groupId, pSrc,
+                         rowId, pInfo->pCreateTbRes, &pTask->storageAPI.stateStore, pTask->streamInfo.dstTableName);
     pInfo->pTbNameIte = taosHashIterate(pInfo->pPartitions, pInfo->pTbNameIte);
   }
   return pInfo->pCreateTbRes->info.rows > 0 ? pInfo->pCreateTbRes : NULL;

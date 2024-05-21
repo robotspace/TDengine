@@ -1852,8 +1852,9 @@ static void calBlockTbName(SStreamScanInfo* pInfo, SSDataBlock* pBlock, int32_t 
   if (pInfo->tbnameCalSup.numOfExprs == 0 && pInfo->tagCalSup.numOfExprs == 0) {
     pBlock->info.parTbName[0] = 0;
   } else {
-    appendCreateTableRow(pInfo->pStreamScanOp->pTaskInfo->streamInfo.pState, &pInfo->tbnameCalSup, &pInfo->tagCalSup,
-                         pBlock->info.id.groupId, pBlock, rowId, pInfo->pCreateTbRes, &pInfo->stateStore);
+    SStreamTaskInfo* pSTInfo = &pInfo->pStreamScanOp->pTaskInfo->streamInfo;
+    appendCreateTableRow(pSTInfo->pState, &pInfo->tbnameCalSup, &pInfo->tagCalSup,
+                         pBlock->info.id.groupId, pBlock, rowId, pInfo->pCreateTbRes, &pInfo->stateStore, pSTInfo->dstTableName);
   }
 }
 
