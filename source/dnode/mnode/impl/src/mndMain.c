@@ -128,9 +128,9 @@ static void mndPullupCompacts(SMnode *pMnode) {
 static void mndPullupTtl(SMnode *pMnode) {
   mTrace("pullup ttl");
   int32_t contLen = 0;
-  void   *pReq = mndBuildTimerMsg(&contLen);
-  SRpcMsg rpcMsg = {.msgType = TDMT_MND_TTL_TIMER, .pCont = pReq, .contLen = contLen};
-  tmsgPutToQueue(&pMnode->msgCb, WRITE_QUEUE, &rpcMsg);
+  // void   *pReq = mndBuildTimerMsg(&contLen);
+  // SRpcMsg rpcMsg = {.msgType = TDMT_MND_TTL_TIMER, .pCont = pReq, .contLen = contLen};
+  //  tmsgPutToQueue(&pMnode->msgCb, WRITE_QUEUE, &rpcMsg);
 }
 
 static void mndPullupTrimDb(SMnode *pMnode) {
@@ -477,26 +477,23 @@ static int32_t mndCreateDir(SMnode *pMnode, const char *path) {
 static int32_t mndInitWal(SMnode *pMnode) {
   char path[PATH_MAX + 20] = {0};
   snprintf(path, sizeof(path), "%s%swal", pMnode->path, TD_DIRSEP);
-  SWalCfg cfg = {
-      .vgId = 1,
-      .fsyncPeriod = 0,
-      .rollPeriod = -1,
-      .segSize = -1,
-      .retentionPeriod = 0,
-      .retentionSize = 0,
-      .level = TAOS_WAL_FSYNC,
-      .encryptAlgorithm = 0,
-      .encryptKey = {0}
-  };
+  SWalCfg cfg = {.vgId = 1,
+                 .fsyncPeriod = 0,
+                 .rollPeriod = -1,
+                 .segSize = -1,
+                 .retentionPeriod = 0,
+                 .retentionSize = 0,
+                 .level = TAOS_WAL_FSYNC,
+                 .encryptAlgorithm = 0,
+                 .encryptKey = {0}};
 
 #if defined(TD_ENTERPRISE)
-  if(tsiEncryptAlgorithm == DND_CA_SM4 && (tsiEncryptScope & DND_CS_MNODE_WAL) == DND_CS_MNODE_WAL){
-    cfg.encryptAlgorithm = (tsiEncryptScope & DND_CS_MNODE_WAL)? tsiEncryptAlgorithm : 0;
-    if(tsEncryptKey[0] == '\0'){
+  if (tsiEncryptAlgorithm == DND_CA_SM4 && (tsiEncryptScope & DND_CS_MNODE_WAL) == DND_CS_MNODE_WAL) {
+    cfg.encryptAlgorithm = (tsiEncryptScope & DND_CS_MNODE_WAL) ? tsiEncryptAlgorithm : 0;
+    if (tsEncryptKey[0] == '\0') {
       terrno = TSDB_CODE_DNODE_INVALID_ENCRYPTKEY;
       return -1;
-    }
-    else{
+    } else {
       strncpy(cfg.encryptKey, tsEncryptKey, ENCRYPT_KEY_LEN);
     }
   }
@@ -834,8 +831,8 @@ _OVER:
       pMsg->msgType == TDMT_MND_COMPACT_TIMER || pMsg->msgType == TDMT_MND_NODECHECK_TIMER ||
       pMsg->msgType == TDMT_MND_GRANT_HB_TIMER || pMsg->msgType == TDMT_MND_STREAM_CHECKPOINT_CANDIDITATE ||
       pMsg->msgType == TDMT_MND_STREAM_CHECKPOINT_TIMER || pMsg->msgType == TDMT_MND_STREAM_REQ_CHKPT ||
-      pMsg->msgType == TDMT_MND_S3MIGRATE_DB_TIMER ||
-      pMsg->msgType == TDMT_MND_ARB_HEARTBEAT_TIMER || pMsg->msgType == TDMT_MND_ARB_CHECK_SYNC_TIMER) {
+      pMsg->msgType == TDMT_MND_S3MIGRATE_DB_TIMER || pMsg->msgType == TDMT_MND_ARB_HEARTBEAT_TIMER ||
+      pMsg->msgType == TDMT_MND_ARB_CHECK_SYNC_TIMER) {
     mTrace("timer not process since mnode restored:%d stopped:%d, sync restored:%d role:%s ", pMnode->restored,
            pMnode->stopped, state.restored, syncStr(state.state));
     return -1;

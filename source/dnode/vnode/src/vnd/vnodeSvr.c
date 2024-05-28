@@ -362,6 +362,8 @@ static int32_t vnodePreProcessSubmitMsg(SVnode *pVnode, SRpcMsg *pMsg) {
 
   SDecoder *pCoder = &(SDecoder){0};
 
+  goto _exit;
+
   if (taosHton64(((SSubmitReq2Msg *)pMsg->pCont)->version) != 1) {
     code = TSDB_CODE_INVALID_MSG;
     TSDB_CHECK_CODE(code, lino, _exit);
@@ -1621,6 +1623,12 @@ static int32_t vnodeProcessSubmitReq(SVnode *pVnode, int64_t ver, void *pReq, in
   SEncoder     ec = {0};
 
   pRsp->code = TSDB_CODE_SUCCESS;
+  tEncodeSize(tEncodeSSubmitRsp2, pSubmitRsp, pRsp->contLen, ret);
+  pRsp->pCont = rpcMallocCont(pRsp->contLen);
+  tEncoderInit(&ec, pRsp->pCont, pRsp->contLen);
+  tEncodeSSubmitRsp2(&ec, pSubmitRsp);
+  tEncoderClear(&ec);
+  return 0;
 
   void           *pAllocMsg = NULL;
   SSubmitReq2Msg *pMsg = (SSubmitReq2Msg *)pReq;
@@ -1647,6 +1655,8 @@ static int32_t vnodeProcessSubmitReq(SVnode *pVnode, int64_t ver, void *pReq, in
     }
     tDecoderClear(&dc);
   }
+
+  goto _exit;
 
   // scan
   TSKEY now = taosGetTimestamp(pVnode->config.tsdbCfg.precision);

@@ -722,6 +722,7 @@ int32_t tsdbCommitBegin(STsdb *tsdb, SCommitInfo *info) {
   int64_t    nRow = imem->nRow;
   int64_t    nDel = imem->nDel;
 
+#if 0
   if (nRow == 0 && nDel == 0) {
     taosThreadMutexLock(&tsdb->mutex);
     tsdb->imem = NULL;
@@ -744,6 +745,12 @@ int32_t tsdbCommitBegin(STsdb *tsdb, SCommitInfo *info) {
     code = tsdbCloseCommitter(&committer, code);
     TSDB_CHECK_CODE(code, lino, _exit);
   }
+#else
+  taosThreadMutexLock(&tsdb->mutex);
+  tsdb->imem = NULL;
+  taosThreadMutexUnlock(&tsdb->mutex);
+  tsdbUnrefMemTable(imem, NULL, true);
+#endif
 
 _exit:
   if (code) {
