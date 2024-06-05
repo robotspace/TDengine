@@ -153,7 +153,7 @@ class TDDnodes:
     def StopAllSigint(self):
         tdLog.info("stop all dnodes sigint, asan:%d" % self.asan)
         if self.asan:
-            tdLog.info("execute script: %s" % self.stopDnodesSigintPath)
+            tdLog.info("444  execute script: %s" % self.stopDnodesSigintPath)
             os.system(self.stopDnodesSigintPath)
             tdLog.info("execute finished")
             return
@@ -194,7 +194,7 @@ class TDDnodes:
         else:
             distro_id = "not alpine"
         if self.asan and distro_id != "alpine":
-            tdLog.info("execute script: %s" % self.stopDnodesPath)
+            tdLog.info("execute script: %s --- " % self.stopDnodesPath)
             os.system(self.stopDnodesPath)
             tdLog.info("execute finished")
             return

@@ -444,7 +444,7 @@ class TDDnode:
     def stop(self):
         if self.asan:
             stopCmd = "%s -s stop -n dnode%d" % (self.execPath, self.index)
-            tdLog.info("execute script: " + stopCmd)
+            tdLog.info("111 execute script: " + stopCmd)
             os.system(stopCmd)
             return
 
@@ -489,7 +489,7 @@ class TDDnode:
         # print(self.asan,self.running,self.remoteIP,self.valgrind)
         if self.asan:
             stopCmd = "%s -s stop -n dnode%d" % (self.execPath, self.index)
-            tdLog.info("execute script: " + stopCmd)
+            tdLog.info("222 execute script: " + stopCmd)
             os.system(stopCmd)
             return
 
@@ -531,7 +531,7 @@ class TDDnode:
         if self.asan:
             stopCmd = "%s -s stop -n dnode%d -x SIGKILL" + \
                 (self.execPath, self.index)
-            tdLog.info("execute script: " + stopCmd)
+            tdLog.info("333 execute script: " + stopCmd)
             os.system(stopCmd)
             return
 

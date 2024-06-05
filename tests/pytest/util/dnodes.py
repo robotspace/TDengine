@@ -506,7 +506,7 @@ class TDDnode:
     def stop(self):
         if self.asan:
             stopCmd = "%s -s stop -n dnode%d" % (self.execPath, self.index)
-            tdLog.info("execute script: " + stopCmd)
+            tdLog.info("123 execute script: " + stopCmd)
             os.system(stopCmd)
             return
 
@@ -551,7 +551,7 @@ class TDDnode:
         # print(self.asan,self.running,self.remoteIP,self.valgrind)
         if self.asan:
             stopCmd = "%s -s stop -n dnode%d" % (self.execPath, self.index)
-            tdLog.info("execute script: " + stopCmd)
+            tdLog.info("124execute script: " + stopCmd)
             os.system(stopCmd)
             return
 
@@ -593,7 +593,7 @@ class TDDnode:
         if self.asan:
             stopCmd = "%s -s stop -n dnode%d -x SIGKILL" + \
                 (self.execPath, self.index)
-            tdLog.info("execute script: " + stopCmd)
+            tdLog.info("125 execute script: " + stopCmd)
             os.system(stopCmd)
             return
 
@@ -772,7 +772,7 @@ class TDDnodes:
     def StopAllSigint(self):
         tdLog.info("stop all dnodes sigint, asan:%d" % self.asan)
         if self.asan:
-            tdLog.info("execute script: %s" % self.stopDnodesSigintPath)
+            tdLog.info("126 : %s" % self.stopDnodesSigintPath)
             os.system(self.stopDnodesSigintPath)
             tdLog.info("execute finished")
             return
@@ -813,7 +813,7 @@ class TDDnodes:
         else:
             distro_id = "not alpine"
         if self.asan and distro_id != "alpine":
-            tdLog.info("execute script: %s" % self.stopDnodesPath)
+            tdLog.info("127 execute script: %s" % self.stopDnodesPath)
             os.system(self.stopDnodesPath)
             tdLog.info("execute finished")
             return
