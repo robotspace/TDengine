@@ -82,6 +82,7 @@ typedef struct SOperatorInfo {
   int32_t                numOfDownstream;  // number of downstream. The value is always ONE expect for join operator
   int32_t                numOfRealDownstream;
   SOperatorFpSet         fpSet;
+  bool                   shouldRetryLater;
 } SOperatorInfo;
 
 // operator creater functions
@@ -180,6 +181,8 @@ void           setOperatorInfo(SOperatorInfo* pOperator, const char* name, int32
 int32_t        optrDefaultBufFn(SOperatorInfo* pOperator);
 SSDataBlock*   optrDefaultGetNextExtFn(struct SOperatorInfo* pOperator, SOperatorParam* pParam);
 int32_t        optrDefaultNotifyFn(struct SOperatorInfo* pOperator, SOperatorParam* pParam);
+
+bool           opShouldRetryLater(struct SOperatorInfo* pOperator);
 SSDataBlock*   getNextBlockFromDownstream(struct SOperatorInfo* pOperator, int32_t idx);
 SSDataBlock*   getNextBlockFromDownstreamRemain(struct SOperatorInfo* pOperator, int32_t idx);
 int16_t        getOperatorResultBlockId(struct SOperatorInfo* pOperator, int32_t idx);

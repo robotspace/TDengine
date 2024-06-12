@@ -254,6 +254,7 @@ int32_t qwBuildAndSendCQueryMsg(QW_FPARAMS_DEF, SRpcHandleInfo *pConn) {
   req->queryId = qId;
   req->taskId = tId;
   req->execId = eId;
+  taosMsleep(500);
 
   SRpcMsg pNewMsg = {
       .msgType = TDMT_SCH_QUERY_CONTINUE,
@@ -733,4 +734,72 @@ int32_t qWorkerProcessDeleteMsg(void *node, void *qWorkerMgmt, SRpcMsg *pMsg, SD
 _return:
 
   QW_RET(code);
+}
+
+struct SQWAsyncRecoverExecInfo {
+  uint64_t        qId;
+  uint64_t        tId;
+  int32_t         eId;
+  uint64_t        sId;
+  int64_t         rId;
+  SRpcHandleInfo  pConn;
+  SQWorker       *mgmt;
+};
+
+static int32_t qwAsyncRecoverExecCQuery(void* param) {
+  struct SQWAsyncRecoverExecInfo *pRecoverInfo = (struct SQWAsyncRecoverExecInfo *)param;
+  uint64_t                        qId = pRecoverInfo->qId;
+  uint64_t                        tId = pRecoverInfo->tId;
+  int32_t                         eId = pRecoverInfo->eId;
+  uint64_t                        sId = pRecoverInfo->sId;
+  int64_t                         rId = pRecoverInfo->rId;
+  SQWTaskCtx                     *pTaskCtx = NULL;
+  SQWorker                       *mgmt = pRecoverInfo->mgmt;
+  int32_t                         code = 0;
+  bool                            locked = false;
+
+  QW_ERR_JRET(qwAcquireTaskCtx(QW_FPARAMS(), &pTaskCtx));
+
+  QW_LOCK(QW_WRITE, &pTaskCtx->lock);
+  locked = true;
+  atomic_store_8((int8_t *)&pTaskCtx->queryContinue, 1);
+  if (atomic_load_8((int8_t*)&pTaskCtx->queryInQueue) == 0 && !QW_QUERY_RUNNING(pTaskCtx)) {
+    QW_ERR_JRET(qwUpdateTaskStatus(QW_FPARAMS(), JOB_TASK_STATUS_EXEC, pTaskCtx->dynamicTask));
+    atomic_store_8((int8_t *)&pTaskCtx->queryInQueue, 1);
+    code = qwBuildAndSendCQueryMsg(QW_FPARAMS(), &pRecoverInfo->pConn);
+    if (code) {
+      atomic_store_8((int8_t *)&pTaskCtx->queryInQueue, 0);
+      QW_ERR_JRET(code);
+    }
+  }
+
+_return:
+  if (pTaskCtx && locked) QW_UNLOCK(QW_WRITE, &pTaskCtx->lock);
+  if (pTaskCtx) qwReleaseTaskCtx(mgmt, pTaskCtx);
+
+  QW_RET(code);
+}
+
+static void qwAsyncAbortExecCQuery(void* param) {
+  struct SQWAsyncRecoverExecInfo* pRecoverInfo = (struct SQWAsyncRecoverExecInfo*)param;
+  // wjm TODO
+}
+
+int32_t qwSetAsyncRecoverExecInfo(QW_FPARAMS_DEF, SRpcHandleInfo* pConn, qTaskInfo_t pTaskInfo) {
+  struct SQWAsyncRecoverExecInfo* pRecoverInfo = taosMemoryCalloc(1, sizeof(struct SQWAsyncRecoverExecInfo));
+  if (!pRecoverInfo) {
+    QW_SCH_TASK_ELOG("calloc qw async recover info: %d failed", (int32_t)sizeof(struct SQWAsyncRecoverExecInfo));
+    QW_ERR_RET(TSDB_CODE_OUT_OF_MEMORY);
+  }
+
+  pRecoverInfo->mgmt = mgmt;
+  pRecoverInfo->eId = eId;
+  pRecoverInfo->qId = qId;
+  pRecoverInfo->rId = rId;
+  pRecoverInfo->sId = sId;
+  pRecoverInfo->tId = tId;
+  pRecoverInfo->pConn = *pConn;
+
+  setTaskAsyncRecoverExecInfo(pTaskInfo, pRecoverInfo, qwAsyncRecoverExecCQuery, qwAsyncAbortExecCQuery);
+  return TSDB_CODE_SUCCESS;
 }

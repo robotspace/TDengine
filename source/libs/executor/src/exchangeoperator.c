@@ -28,6 +28,7 @@
 typedef struct SFetchRspHandleWrapper {
   uint32_t exchangeId;
   int32_t  sourceIndex;
+  SExecTaskInfo* pTaskInfo;
 } SFetchRspHandleWrapper;
 
 typedef struct SSourceDataInfo {
@@ -60,6 +61,8 @@ static int32_t handleLimitOffset(SOperatorInfo* pOperator, SLimitInfo* pLimitInf
                                  bool holdDataInBuf);
 static int32_t doExtractResultBlocks(SExchangeInfo* pExchangeInfo, SSourceDataInfo* pDataInfo);
 
+static bool isExchangeReady(SExchangeInfo* pExchangeInfo);
+
 static void concurrentlyLoadRemoteDataImpl(SOperatorInfo* pOperator, SExchangeInfo* pExchangeInfo,
                                            SExecTaskInfo* pTaskInfo) {
   int32_t code = 0;
@@ -74,9 +77,10 @@ static void concurrentlyLoadRemoteDataImpl(SOperatorInfo* pOperator, SExchangeIn
 
   while (1) {
     qDebug("prepare wait for ready, %p, %s", pExchangeInfo, GET_TASKID(pTaskInfo));
+    if (!isExchangeReady(pExchangeInfo)) break;
     tsem_wait(&pExchangeInfo->ready);
 
-    if (isTaskKilled(pTaskInfo)) {
+    if (isTaskKilled(pTaskInfo)) { // TODO move?
       T_LONG_JMP(pTaskInfo->env, pTaskInfo->code);
     }
 
@@ -328,6 +332,7 @@ SOperatorInfo* createExchangeOperatorInfo(void* pTransporter, SExchangePhysiNode
   }
 
   tsem_init(&pInfo->ready, 0, 0);
+  pInfo->readyCounter = 0;
   pInfo->pDummyBlock = createDataBlockFromDescNode(pExNode->node.pOutputDataBlockDesc);
   pInfo->pResultBlockList = taosArrayInit(64, POINTER_BYTES);
   pInfo->pRecycledBlocks = taosArrayInit(64, POINTER_BYTES);
@@ -421,7 +426,7 @@ int32_t loadRemoteDataCallback(void* param, SDataBuf* pMsg, int32_t code) {
     pRsp->useconds = htobe64(pRsp->useconds);
     pRsp->numOfBlocks = htonl(pRsp->numOfBlocks);
 
-    qDebug("%s fetch rsp received, index:%d, blocks:%d, rows:%" PRId64 ", %p", pSourceDataInfo->taskId, index,
+    qDebug("%s fetch rsp received wjm callback, index:%d, blocks:%d, rows:%" PRId64 ", %p", pSourceDataInfo->taskId, index,
            pRsp->numOfBlocks, pRsp->numOfRows, pExchangeInfo);
   } else {
     taosMemoryFree(pMsg->pData);
@@ -437,6 +442,12 @@ int32_t loadRemoteDataCallback(void* param, SDataBuf* pMsg, int32_t code) {
 
   tmemory_barrier();
   pSourceDataInfo->status = EX_SOURCE_DATA_READY;
+  atomic_add_fetch_32(&pExchangeInfo->readyCounter, 1);
+
+  struct SAsyncRecoverExecInfo* pRecoverInfo = &pWrapper->pTaskInfo->pAsyncRecoverInfo;
+  if (pRecoverInfo->pRecoverInfo && pRecoverInfo->continueFn(pRecoverInfo->pRecoverInfo) != TSDB_CODE_SUCCESS) {
+    pRecoverInfo->abortFn(pRecoverInfo->pRecoverInfo);
+  }
   code = tsem_post(&pExchangeInfo->ready);
   if (code != TSDB_CODE_SUCCESS) {
     code = TAOS_SYSTEM_ERROR(code);
@@ -489,6 +500,7 @@ int32_t doSendFetchDataRequest(SExchangeInfo* pExchangeInfo, SExecTaskInfo* pTas
   SFetchRspHandleWrapper* pWrapper = taosMemoryCalloc(1, sizeof(SFetchRspHandleWrapper));
   pWrapper->exchangeId = pExchangeInfo->self;
   pWrapper->sourceIndex = sourceIndex;
+  pWrapper->pTaskInfo = pTaskInfo;
 
   if (pSource->localExec) {
     SDataBuf pBuf = {0};
@@ -738,6 +750,18 @@ int32_t doExtractResultBlocks(SExchangeInfo* pExchangeInfo, SSourceDataInfo* pDa
   return code;
 }
 
+static bool isExchangeReady(SExchangeInfo* pExchangeInfo) {
+  int32_t oldCounter = atomic_load_32(&pExchangeInfo->readyCounter);
+  while (oldCounter > 0) {
+    int32_t counter = atomic_val_compare_exchange_32(&pExchangeInfo->readyCounter, oldCounter, oldCounter - 1);
+    if (counter == oldCounter) {
+      return true;
+    }
+    oldCounter = counter;
+  }
+  return false;
+}
+
 int32_t seqLoadRemoteData(SOperatorInfo* pOperator) {
   SExchangeInfo* pExchangeInfo = pOperator->info;
   SExecTaskInfo* pTaskInfo = pOperator->pTaskInfo;
@@ -756,6 +780,8 @@ int32_t seqLoadRemoteData(SOperatorInfo* pOperator) {
     pDataInfo->status = EX_SOURCE_DATA_NOT_READY;
 
     doSendFetchDataRequest(pExchangeInfo, pTaskInfo, pExchangeInfo->current);
+    if (!isExchangeReady(pExchangeInfo)) break;
+
     tsem_wait(&pExchangeInfo->ready);
     if (isTaskKilled(pTaskInfo)) {
       T_LONG_JMP(pTaskInfo->env, pTaskInfo->code);

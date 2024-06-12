@@ -223,6 +223,9 @@ void    resetTaskInfo(qTaskInfo_t tinfo);
 int32_t qStreamOperatorReleaseState(qTaskInfo_t tInfo);
 int32_t qStreamOperatorReloadState(qTaskInfo_t tInfo);
 
+int32_t setTaskAsyncRecoverExecInfo(qTaskInfo_t tInfo, void* pRecoverInfo, int32_t (*continueFn)(void*),
+                                    void (*abortFn)(void*));
+
 #ifdef __cplusplus
 }
 #endif

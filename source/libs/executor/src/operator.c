@@ -74,6 +74,7 @@ void setOperatorCompleted(SOperatorInfo* pOperator) {
   pOperator->status = OP_EXEC_DONE;
   pOperator->cost.totalCost = (taosGetTimestampUs() - pOperator->pTaskInfo->cost.start) / 1000.0;
   setTaskStatus(pOperator->pTaskInfo, TASK_COMPLETED);
+  qDebug("set task completerd");
 }
 
 void setOperatorInfo(SOperatorInfo* pOperator, const char* name, int32_t type, bool blocking, int32_t status,
@@ -733,9 +734,14 @@ int32_t setOperatorParams(struct SOperatorInfo* pOperator, SOperatorParam* pInpu
   return TSDB_CODE_SUCCESS;
 }
 
-
 SSDataBlock* getNextBlockFromDownstream(struct SOperatorInfo* pOperator, int32_t idx) {
-  return getNextBlockFromDownstreamImpl(pOperator, idx, true);
+  SSDataBlock* pBlock = getNextBlockFromDownstreamImpl(pOperator, idx, true);
+  pOperator->shouldRetryLater = pOperator->pDownstream[idx]->status != OP_EXEC_DONE && pBlock == NULL;
+  return pBlock;
+}
+
+bool opShouldRetryLater(struct SOperatorInfo* pOperator) {
+  return pOperator->shouldRetryLater;
 }
 
 SSDataBlock* getNextBlockFromDownstreamRemain(struct SOperatorInfo* pOperator, int32_t idx) {

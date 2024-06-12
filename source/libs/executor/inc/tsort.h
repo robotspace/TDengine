@@ -29,6 +29,12 @@ enum {
   SORT_BLOCK_TS_MERGE = 0x3
 };
 
+enum {
+  SORT_SOURCE_STATUS_NORMAL = 0x0,
+  SORT_SOURCE_STATUS_RETRY_LATER = 0x1,
+  SORT_SOURCE_STATUS_DONE = 0x2,
+};
+
 typedef struct SMultiMergeSource {
   int32_t      type;
   int32_t      rowIndex;
@@ -47,6 +53,7 @@ typedef struct SSortSource {
   };
   int64_t fetchUs;
   int64_t fetchNum;
+  int8_t  status;
 } SSortSource;
 
 typedef struct SMsortComparParam {
@@ -215,6 +222,8 @@ void tsortSetMergeLimitReachedFp(SSortHandle* pHandle, void (*mergeLimitReached)
 
 int tsortComparBlockCell(SSDataBlock* pLeftBlock, SSDataBlock* pRightBlock,
                       int32_t leftRowIndex, int32_t rightRowIndex, void* pOrder);
+
+void tsortSetSourceShouldRetryLaterFp(SSortHandle* pHandle, bool (*getSourceShouldRetryLater)(SSortSource* pSource));
 #ifdef __cplusplus
 }
 #endif

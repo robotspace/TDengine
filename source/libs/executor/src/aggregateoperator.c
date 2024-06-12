@@ -190,6 +190,7 @@ static bool nextGroupedResult(SOperatorInfo* pOperator) {
   while (1) {
     bool blockAllocated = false;
     pBlock = getNextBlockFromDownstream(pOperator, 0);
+    if (opShouldRetryLater(pOperator)) break;
     if (pBlock == NULL) {
       if (!pAggInfo->hasValidBlock) {
         createDataBlockForEmptyInput(pOperator, &pBlock);
@@ -236,7 +237,7 @@ static bool nextGroupedResult(SOperatorInfo* pOperator) {
   }
 
   initGroupedResultInfo(&pAggInfo->groupResInfo, pAggInfo->aggSup.pResultRowHashTable, 0);
-  return pBlock != NULL;
+  return pBlock != NULL || opShouldRetryLater(pOperator);
 }
 
 SSDataBlock* getAggregateResult(SOperatorInfo* pOperator) {
@@ -266,7 +267,7 @@ SSDataBlock* getAggregateResult(SOperatorInfo* pOperator) {
         break;
       }
     }
-  } while (pInfo->pRes->info.rows == 0 && hasNewGroups);
+  } while (pInfo->pRes->info.rows == 0 && hasNewGroups && !opShouldRetryLater(pOperator));
 
   size_t rows = blockDataGetNumOfRows(pInfo->pRes);
   pOperator->resultInfo.totalRows += rows;

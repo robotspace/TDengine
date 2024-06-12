@@ -50,6 +50,7 @@ int32_t qwRegisterQueryBrokenLinkArg(QW_FPARAMS_DEF, SRpcHandleInfo *pConn);
 int32_t qwRegisterHbBrokenLinkArg(SQWorker *mgmt, uint64_t sId, SRpcHandleInfo *pConn);
 int32_t qwBuildAndSendDropMsg(QW_FPARAMS_DEF, SRpcHandleInfo *pConn);
 
+int32_t qwSetAsyncRecoverExecInfo(QW_FPARAMS_DEF, SRpcHandleInfo* pConn, qTaskInfo_t pTaskInfo);
 #ifdef __cplusplus
 }
 #endif

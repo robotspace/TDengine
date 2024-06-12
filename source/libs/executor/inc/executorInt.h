@@ -201,6 +201,7 @@ typedef struct SExchangeInfo {
   SLimitInfo          limitInfo;
   int64_t             openedTs;  // start exec time stamp, todo: move to SLoadRemoteDataInfo
   char*               pTaskId;
+  int32_t             readyCounter;
 } SExchangeInfo;
 
 typedef struct SScanInfo {

@@ -152,6 +152,12 @@ int32_t qwExecTask(QW_FPARAMS_DEF, SQWTaskCtx *ctx, bool *queryStop) {
 
       code = qExecTaskOpt(taskHandle, pResList, &useconds, &hasMore, &localFetch);
       if (code) {
+        if (code == TSDB_CODE_QRY_QWORKER_RETRY_LATER) {
+          QW_TASK_DLOG("wjm qworker retry later: %d", 1);
+          code = TSDB_CODE_SUCCESS;
+          if (queryStop) *queryStop = true;
+          break;
+        }
         if (code != TSDB_CODE_OPS_NOT_SUPPORT) {
           QW_TASK_ELOG("qExecTask failed, code:%x - %s", code, tstrerror(code));
         } else {
@@ -177,7 +183,7 @@ int32_t qwExecTask(QW_FPARAMS_DEF, SQWTaskCtx *ctx, bool *queryStop) {
       QW_TASK_DLOG("data put into sink, rows:%" PRId64 ", continueExecTask:%d", pRes->info.rows, qcontinue);
     }
 
-    if (numOfResBlock == 0 || (hasMore == false)) {
+    if (!hasMore) {
       if (!ctx->dynamicTask) {
         if (numOfResBlock == 0) {
           QW_TASK_DLOG("qExecTask end with empty res, useconds:%" PRIu64, useconds);
@@ -754,6 +760,15 @@ int32_t qwProcessQuery(QW_FPARAMS_DEF, SQWMsg *qwMsg, char *sql) {
     QW_ERR_JRET(code);
   }
 
+  if (qwMsg->msgType == TDMT_SCH_MERGE_QUERY) {
+    code = qwSetAsyncRecoverExecInfo(QW_FPARAMS(), &qwMsg->connInfo, pTaskInfo);
+
+    if (code) {
+      QW_TASK_ELOG("qwBuildAsyncRecoverExecInfo failed, code:%x - %s", code, tstrerror(code));
+      QW_ERR_JRET(code);
+    }
+  }
+
   if (NULL == sinkHandle || NULL == pTaskInfo) {
     QW_TASK_ELOG("create task result error, taskHandle:%p, sinkHandle:%p", pTaskInfo, sinkHandle);
     QW_ERR_JRET(TSDB_CODE_APP_ERROR);
@@ -817,7 +832,7 @@ int32_t qwProcessCQuery(QW_FPARAMS_DEF, SQWMsg *qwMsg) {
       if ((!sOutput.queryEnd) && (DS_BUF_LOW == sOutput.bufStatus || DS_BUF_EMPTY == sOutput.bufStatus)) {
         QW_TASK_DLOG("task not end and buf is %s, need to continue query", qwBufStatusStr(sOutput.bufStatus));
 
-        atomic_store_8((int8_t *)&ctx->queryContinue, 1);
+        if (rsp) atomic_store_8((int8_t *)&ctx->queryContinue, 1);
       }
 
       if (rsp) {
@@ -838,7 +853,7 @@ int32_t qwProcessCQuery(QW_FPARAMS_DEF, SQWMsg *qwMsg) {
         QW_TASK_DLOG("fetch rsp send, handle:%p, code:%x - %s, dataLen:%d", qwMsg->connInfo.handle, code,
                      tstrerror(code), dataLen);
       } else {
-        atomic_store_8((int8_t *)&ctx->queryContinue, 1);
+        if (!queryStop) atomic_store_8((int8_t *)&ctx->queryContinue, 1);
       }
     }
 
@@ -860,10 +875,10 @@ int32_t qwProcessCQuery(QW_FPARAMS_DEF, SQWMsg *qwMsg) {
     }
 
     QW_LOCK(QW_WRITE, &ctx->lock);
-    if (atomic_load_8((int8_t *)&ctx->queryEnd) || (queryStop && (0 == atomic_load_8((int8_t *)&ctx->queryContinue))) ||
-        code) {
+    bool queryEnd = atomic_load_8((int8_t*)&ctx->queryEnd);
+    if (queryEnd || (queryStop && (0 == atomic_load_8((int8_t *)&ctx->queryContinue))) || code) {
       // Note: query is not running anymore
-      QW_SET_PHASE(ctx, QW_PHASE_POST_CQUERY);
+      if (queryEnd || queryStop) QW_SET_PHASE(ctx, QW_PHASE_POST_CQUERY);
       QW_UNLOCK(QW_WRITE, &ctx->lock);
       break;
     }
@@ -895,7 +910,7 @@ int32_t qwProcessFetch(QW_FPARAMS_DEF, SQWMsg *qwMsg) {
   ctx->dataConnInfo = qwMsg->connInfo;
 
   if (qwMsg->msg) {
-    code = qwStartDynamicTaskNewExec(QW_FPARAMS(), ctx, qwMsg);
+    code = qwStartDynamicTaskNewExec(QW_FPARAMS(), ctx, qwMsg); // TODO wjm how to handle this
     goto _return;
   }
 
@@ -924,6 +939,7 @@ int32_t qwProcessFetch(QW_FPARAMS_DEF, SQWMsg *qwMsg) {
       QW_TASK_DLOG_E("task query unfinished");
     } else if (QW_QUERY_RUNNING(ctx)) {
       atomic_store_8((int8_t *)&ctx->queryContinue, 1);
+      QW_TASK_DLOG_E("wjm query is running");
     } else if (0 == atomic_load_8((int8_t *)&ctx->queryInQueue)) {
       qwUpdateTaskStatus(QW_FPARAMS(), JOB_TASK_STATUS_EXEC, ctx->dynamicTask);
       atomic_store_8((int8_t *)&ctx->queryInQueue, 1);

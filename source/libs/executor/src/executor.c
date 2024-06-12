@@ -622,6 +622,7 @@ int32_t qExecTaskOpt(qTaskInfo_t tinfo, SArray* pResList, uint64_t* useconds, bo
   } else {
     pRes = pTaskInfo->pRoot->fpSet.getNextFn(pTaskInfo->pRoot);
   }
+  pTaskInfo->pRoot->shouldRetryLater = pRes == NULL && pTaskInfo->pRoot->status != OP_EXEC_DONE;
 
   if(pRes == NULL) {
     st = taosGetTimestampUs();
@@ -654,12 +655,13 @@ int32_t qExecTaskOpt(qTaskInfo_t tinfo, SArray* pResList, uint64_t* useconds, bo
     }
 
     pRes = pTaskInfo->pRoot->fpSet.getNextFn(pTaskInfo->pRoot);
+    pTaskInfo->pRoot->shouldRetryLater = pRes == NULL && pTaskInfo->pRoot->status != OP_EXEC_DONE;
   }
   if (pTaskInfo->pSubplan->dynamicRowThreshold) {
     pTaskInfo->pSubplan->rowsThreshold -= current;
   }
 
-  *hasMore = (pRes != NULL);
+  *hasMore = (pRes != NULL || pTaskInfo->pRoot->shouldRetryLater);
   uint64_t el = (taosGetTimestampUs() - st);
 
   pTaskInfo->cost.elapsedTime += el;
@@ -670,11 +672,12 @@ int32_t qExecTaskOpt(qTaskInfo_t tinfo, SArray* pResList, uint64_t* useconds, bo
   cleanUpUdfs();
 
   uint64_t total = pTaskInfo->pRoot->resultInfo.totalRows;
-  qDebug("%s task suspended, %d rows in %d blocks returned, total:%" PRId64 " rows, in sinkNode:%d, elapsed:%.2f ms",
-         GET_TASKID(pTaskInfo), current, (int32_t)taosArrayGetSize(pResList), total, 0, el / 1000.0);
+  qDebug("%s task suspended, %d rows in %d blocks returned, total:%" PRId64 " rows, in sinkNode:%d, elapsed:%.2f ms has more: %d",
+         GET_TASKID(pTaskInfo), current, (int32_t)taosArrayGetSize(pResList), total, 0, el / 1000.0, *hasMore);
 
   atomic_store_64(&pTaskInfo->owner, 0);
-  return pTaskInfo->code;
+  if (pTaskInfo->code) return pTaskInfo->code;
+  return pTaskInfo->pRoot->shouldRetryLater ? TSDB_CODE_QRY_QWORKER_RETRY_LATER : 0;
 }
 
 void qCleanExecTaskBlockBuf(qTaskInfo_t tinfo) {
@@ -1405,4 +1408,13 @@ int32_t qStreamOperatorReloadState(qTaskInfo_t tInfo) {
   SExecTaskInfo* pTaskInfo = (SExecTaskInfo*) tInfo;
   pTaskInfo->pRoot->fpSet.reloadStreamStateFn(pTaskInfo->pRoot);
   return 0;
+}
+
+int32_t setTaskAsyncRecoverExecInfo(qTaskInfo_t tInfo, void* pRecoverInfo, int32_t (*continueFn)(void*),
+                                    void (*abortFn)(void*)) {
+  SExecTaskInfo* pTaskInfo = (SExecTaskInfo*)tInfo;
+  pTaskInfo->pAsyncRecoverInfo.pRecoverInfo = pRecoverInfo;
+  pTaskInfo->pAsyncRecoverInfo.continueFn = continueFn;
+  pTaskInfo->pAsyncRecoverInfo.abortFn = abortFn;
+  return TSDB_CODE_SUCCESS;
 }

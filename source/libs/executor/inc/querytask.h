@@ -71,6 +71,12 @@ typedef struct {
   SStreamState*        pState;
 } SStreamTaskInfo;
 
+struct SAsyncRecoverExecInfo{
+  void* pRecoverInfo;
+  int32_t (*continueFn)(void*);
+  void (*abortFn)(void*);
+};
+
 struct SExecTaskInfo {
   STaskIdInfo           id;
   uint32_t              status;
@@ -95,6 +101,8 @@ struct SExecTaskInfo {
   int8_t                dynamicTask;
   SOperatorParam*       pOpParam;
   bool                  paramSet;
+
+  struct SAsyncRecoverExecInfo pAsyncRecoverInfo;
 };
 
 void           buildTaskId(uint64_t taskId, uint64_t queryId, char* dst);

@@ -128,6 +128,14 @@ void tsortSetAbortCheckFn(SSortHandle *pHandle, bool (*checkFn)(void *), void* p
 
 static int32_t msortComparFn(const void* pLeft, const void* pRight, void* param);
 
+static bool tsortTryReadyAllSources(SSortHandle* pHandle);
+
+static SSDataBlock* tsortFetchSourceNextBlock(SSortHandle* pHandle, SSortSource* pSource);
+
+static bool tsortAllSourceReady(SSortHandle* pHandle);
+
+static bool tsortShouldSourceRetryLater(SSortSource* pSource);
+
 // | offset[0] | offset[1] |....| nullbitmap | data |...|
 static void* createTuple(uint32_t columnNum, uint32_t tupleLen) {
   uint32_t totalLen = sizeof(uint32_t) * columnNum + BitmapLen(columnNum) + tupleLen;
@@ -448,6 +456,7 @@ static int32_t doAddToBuf(SSDataBlock* pDataBlock, SSortHandle* pHandle) {
 static void setCurrentSourceDone(SSortSource* pSource, SSortHandle* pHandle) {
   pSource->src.rowIndex = -1;
   ++pHandle->numOfCompletedSources;
+  pSource->status = SORT_SOURCE_STATUS_DONE;
 }
 
 static int32_t sortComparInit(SMsortComparParam* pParam, SArray* pSources, int32_t startIndex, int32_t endIndex,
@@ -505,12 +514,7 @@ static int32_t sortComparInit(SMsortComparParam* pParam, SArray* pSources, int32
 
     for (int32_t i = 0; i < pParam->numOfSources; ++i) {
       SSortSource* pSource = pParam->pSources[i];
-      pSource->src.pBlock = pHandle->fetchfp(pSource->param);
-
-      // set current source is done
-      if (pSource->src.pBlock == NULL) {
-        setCurrentSourceDone(pSource, pHandle);
-      }
+      pSource->src.pBlock = tsortFetchSourceNextBlock(pHandle, pSource);
     }
 
     int64_t et = taosGetTimestampUs();
@@ -576,14 +580,11 @@ static int32_t adjustMergeTreeForNextTuple(SSortSource* pSource, SMultiwayMergeT
         releaseBufPage(pHandle->pBuf, pPage);
       }
     } else {
-      int64_t st = taosGetTimestampUs();      
-      pSource->src.pBlock = pHandle->fetchfp(((SSortSource*)pSource)->param);
-      pSource->fetchUs += taosGetTimestampUs() - st;
-      pSource->fetchNum++;
-      if (pSource->src.pBlock == NULL) {
-        (*numOfCompleted) += 1;
-        pSource->src.rowIndex = -1;
-        qDebug("adjust merge tree. %d source completed", *numOfCompleted);
+      SSDataBlock* pBlock = tsortFetchSourceNextBlock(pHandle, pSource);
+      if (pSource->status == SORT_SOURCE_STATUS_RETRY_LATER) {
+        return TSDB_CODE_QRY_QWORKER_RETRY_LATER;
+      } else {
+        pSource->src.pBlock = pBlock;
       }
     }
   }
@@ -2019,7 +2020,10 @@ static bool tsortOpenForBufMergeSort(SSortHandle* pHandle) {
     return code;
   }
 
-  return tMergeTreeCreate(&pHandle->pMergeTree, pHandle->cmpParam.numOfSources, &pHandle->cmpParam, pHandle->comparFn);
+  if (tsortAllSourceReady(pHandle)) {
+    return tMergeTreeCreate(&pHandle->pMergeTree, pHandle->cmpParam.numOfSources, &pHandle->cmpParam, pHandle->comparFn);
+  }
+  return 0;
 }
 
 int32_t tsortClose(SSortHandle* pHandle) {
@@ -2063,6 +2067,19 @@ static STupleHandle* tsortBufMergeSortNextTuple(SSortHandle* pHandle) {
   }
   if (pHandle->cmpParam.numOfSources == pHandle->numOfCompletedSources) {
     return NULL;
+  }
+
+  if (!pHandle->pMergeTree) {
+    if (!tsortTryReadyAllSources(pHandle)) {
+      qDebug("wjm try ready all sources failed, try next time");
+      return NULL;
+    }
+    int32_t code =
+        tMergeTreeCreate(&pHandle->pMergeTree, pHandle->cmpParam.numOfSources, &pHandle->cmpParam, pHandle->comparFn);
+    if (code != TSDB_CODE_SUCCESS) {
+      terrno = code;
+      return NULL;
+    }
   }
 
   // All the data are hold in the buffer, no external sort is invoked.
@@ -2350,4 +2367,44 @@ int32_t tsortCompAndBuildKeys(const SArray* pSortCols, char* keyBuf, int32_t* ke
 void tsortSetMergeLimitReachedFp(SSortHandle* pHandle, void (*mergeLimitReachedCb)(uint64_t tableUid, void* param), void* param) {
   pHandle->mergeLimitReachedFn = mergeLimitReachedCb;
   pHandle->mergeLimitReachedParam = param;
+}
+
+static bool tsortAllSourceReady(SSortHandle* pHandle) {
+  SSortSource* pSource = NULL;
+  for (int32_t i = 0; i < pHandle->pOrderedSource->size; ++i) {
+    pSource = taosArrayGetP(pHandle->pOrderedSource, i);
+    if (pSource->status == SORT_SOURCE_STATUS_RETRY_LATER) return false;
+  }
+  return true;
+}
+
+static SSDataBlock* tsortFetchSourceNextBlock(SSortHandle* pHandle, SSortSource* pSource) {
+  taosAssertDebug(pSource->status != SORT_SOURCE_STATUS_DONE, __FILE__, __LINE__, "");
+
+  bool         retryLater = false;
+  int64_t      st = taosGetTimestampUs();
+  SSDataBlock* pBlock = pHandle->fetchfp(pSource->param);  // TODO wjm pass retryLater into fetchfp
+  pSource->fetchUs += taosGetTimestampUs() - st;
+  pSource->status = SORT_SOURCE_STATUS_NORMAL;
+  if (retryLater) {
+    pSource->status = SORT_SOURCE_STATUS_RETRY_LATER;
+    taosAssertDebug(!pBlock, __FILE__, __LINE__, "");
+  } else {
+    if (!pBlock) setCurrentSourceDone(pSource, pHandle);
+    pSource->fetchNum++;
+  }
+
+  return pBlock;
+}
+
+static bool tsortTryReadyAllSources(SSortHandle* pHandle) {
+  bool allSourceReady = true;
+  for (int32_t i = 0; i < pHandle->pOrderedSource->size; ++i) {
+    SSortSource* pSource = taosArrayGetP(pHandle->pOrderedSource, i);
+    if (pSource->status != SORT_SOURCE_STATUS_RETRY_LATER) continue;
+
+    SSDataBlock* pBlock = tsortFetchSourceNextBlock(pHandle, pSource);
+    allSourceReady = allSourceReady && pSource->status != SORT_SOURCE_STATUS_RETRY_LATER;
+  }
+  return allSourceReady;
 }

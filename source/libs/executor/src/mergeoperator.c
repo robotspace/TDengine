@@ -174,6 +174,12 @@ SSDataBlock* doSortMerge(SOperatorInfo* pOperator) {
 
   while (1) {
     doGetSortedBlockData(pInfo, pHandle, capacity, p, &newgroup);
+    if (terrno == TSDB_CODE_QRY_QWORKER_RETRY_LATER) {
+      pOperator->shouldRetryLater = true; // TODO wjm
+      terrno = TSDB_CODE_SUCCESS;
+    } else {
+      pOperator->shouldRetryLater = false;
+    }
     if (p->info.rows == 0) {
       break;
     }
