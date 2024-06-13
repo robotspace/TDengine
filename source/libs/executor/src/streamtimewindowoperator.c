@@ -56,7 +56,7 @@ typedef struct SPullWindowInfo {
   STimeWindow calWin;
 } SPullWindowInfo;
 
-static SSDataBlock* doStreamMidIntervalAgg(SOperatorInfo* pOperator);
+static SSDataBlock* doStreamMidIntervalAgg(SOperatorInfo* pOperator, SOpNextState* pNextState);
 
 typedef int32_t (*__compare_fn_t)(void* pKey, void* data, int32_t index);
 
@@ -1275,7 +1275,7 @@ int32_t copyUpdateResult(SSHashObj** ppWinUpdated, SArray* pUpdated, __compar_fn
   return TSDB_CODE_SUCCESS;
 }
 
-static SSDataBlock* doStreamFinalIntervalAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamFinalIntervalAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SStreamIntervalOperatorInfo* pInfo = pOperator->info;
   SExecTaskInfo*               pTaskInfo = pOperator->pTaskInfo;
   SStorageAPI*                 pAPI = &pOperator->pTaskInfo->storageAPI;
@@ -1341,7 +1341,7 @@ static SSDataBlock* doStreamFinalIntervalAgg(SOperatorInfo* pOperator) {
       return NULL;
     }
 
-    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream);
+    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream, NULL);
     if (pBlock == NULL) {
       pOperator->status = OP_RES_TO_RETURN;
       qDebug("===stream===return data:%s. recv datablock num:%" PRIu64, getStreamOpName(pOperator->operatorType),
@@ -2732,7 +2732,7 @@ void copyDeleteSessionKey(SSHashObj* source, SSHashObj* dest) {
   tSimpleHashClear(source);
 }
 
-static SSDataBlock* doStreamSessionAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamSessionAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExprSupp*                     pSup = &pOperator->exprSupp;
   SStreamSessionAggOperatorInfo* pInfo = pOperator->info;
   SOptrBasicInfo*                pBInfo = &pInfo->binfo;
@@ -2771,7 +2771,7 @@ static SSDataBlock* doStreamSessionAgg(SOperatorInfo* pOperator) {
     pInfo->pStUpdated = tSimpleHashInit(64, hashFn);
   }
   while (1) {
-    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream);
+    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream, NULL);
     if (pBlock == NULL) {
       break;
     }
@@ -3134,7 +3134,7 @@ void deleteSessionWinState(SStreamAggSupporter* pAggSup, SSDataBlock* pBlock, SS
   taosArrayDestroy(pWins);
 }
 
-static SSDataBlock* doStreamSessionSemiAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamSessionSemiAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SStreamSessionAggOperatorInfo* pInfo = pOperator->info;
   SOptrBasicInfo*                pBInfo = &pInfo->binfo;
   TSKEY                          maxTs = INT64_MIN;
@@ -3183,7 +3183,7 @@ static SSDataBlock* doStreamSessionSemiAgg(SOperatorInfo* pOperator) {
     pInfo->pStUpdated = tSimpleHashInit(64, hashFn);
   }
   while (1) {
-    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream);
+    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream, NULL);
     if (pBlock == NULL) {
       pOperator->status = OP_RES_TO_RETURN;
       break;
@@ -3718,7 +3718,7 @@ static SSDataBlock* buildStateResult(SOperatorInfo* pOperator) {
   return NULL;
 }
 
-static SSDataBlock* doStreamStateAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamStateAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -3758,7 +3758,7 @@ static SSDataBlock* doStreamStateAgg(SOperatorInfo* pOperator) {
     pInfo->pSeUpdated = tSimpleHashInit(64, hashFn);
   }
   while (1) {
-    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream);
+    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream, NULL);
     if (pBlock == NULL) {
       break;
     }
@@ -4032,7 +4032,7 @@ static void setInverFunction(SqlFunctionCtx* pCtx, int32_t num, EStreamType type
 }
 #endif
 
-static SSDataBlock* doStreamIntervalAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamIntervalAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SStreamIntervalOperatorInfo* pInfo = pOperator->info;
   SExecTaskInfo*               pTaskInfo = pOperator->pTaskInfo;
   SStorageAPI*                 pAPI = &pOperator->pTaskInfo->storageAPI;
@@ -4077,7 +4077,7 @@ static SSDataBlock* doStreamIntervalAgg(SOperatorInfo* pOperator) {
   }
 
   while (1) {
-    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream);
+    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream, NULL);
     if (pBlock == NULL) {
       qDebug("===stream===return data:%s. recv datablock num:%" PRIu64, getStreamOpName(pOperator->operatorType),
              pInfo->numOfDatapack);
@@ -4422,7 +4422,7 @@ static SSDataBlock* buildMidIntervalResult(SOperatorInfo* pOperator) {
   return NULL;
 }
 
-static SSDataBlock* doStreamMidIntervalAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamMidIntervalAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SStreamIntervalOperatorInfo* pInfo = pOperator->info;
   SExecTaskInfo*               pTaskInfo = pOperator->pTaskInfo;
   SStorageAPI*                 pAPI = &pOperator->pTaskInfo->storageAPI;
@@ -4476,7 +4476,7 @@ static SSDataBlock* doStreamMidIntervalAgg(SOperatorInfo* pOperator) {
       return NULL;
     }
 
-    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream);
+    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream, NULL);
     if (pBlock == NULL) {
       pOperator->status = OP_RES_TO_RETURN;
       qDebug("===stream===return data:%s. recv datablock num:%" PRIu64, getStreamOpName(pOperator->operatorType),

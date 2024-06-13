@@ -50,7 +50,7 @@ typedef struct SCacheRowsScanInfo {
   SColumnInfo     pkCol;
 } SCacheRowsScanInfo;
 
-static SSDataBlock* doScanCache(SOperatorInfo* pOperator);
+static SSDataBlock* doScanCache(SOperatorInfo* pOperator, SOpNextState* pNextState);
 static void         destroyCacheScanOperator(void* param);
 static int32_t      extractCacheScanSlotId(const SArray* pColMatchInfo, SExecTaskInfo* pTaskInfo, int32_t** pSlotIds,
                                            int32_t** pDstSlotIds);
@@ -209,7 +209,7 @@ _error:
   return NULL;
 }
 
-SSDataBlock* doScanCache(SOperatorInfo* pOperator) {
+SSDataBlock* doScanCache(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }

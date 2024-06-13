@@ -179,7 +179,7 @@ static void revisedFillStartKey(SFillOperatorInfo* pInfo, SSDataBlock* pBlock, i
   }
 }
 
-static SSDataBlock* doFillImpl(SOperatorInfo* pOperator) {
+static SSDataBlock* doFillImpl(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SFillOperatorInfo* pInfo = pOperator->info;
   SExecTaskInfo*     pTaskInfo = pOperator->pTaskInfo;
 
@@ -207,7 +207,7 @@ static SSDataBlock* doFillImpl(SOperatorInfo* pOperator) {
   }
 
   while (1) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
     if (pBlock == NULL) {
       if (pInfo->totalInputRows == 0 &&
           (pInfo->pFillInfo->type != TSDB_FILL_NULL_F && pInfo->pFillInfo->type != TSDB_FILL_SET_VALUE_F)) {
@@ -278,7 +278,7 @@ static SSDataBlock* doFillImpl(SOperatorInfo* pOperator) {
   }
 }
 
-static SSDataBlock* doFill(SOperatorInfo* pOperator) {
+static SSDataBlock* doFill(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SFillOperatorInfo* pInfo = pOperator->info;
   SExecTaskInfo*     pTaskInfo = pOperator->pTaskInfo;
 
@@ -288,7 +288,7 @@ static SSDataBlock* doFill(SOperatorInfo* pOperator) {
 
   SSDataBlock* fillResult = NULL;
   while (true) {
-    fillResult = doFillImpl(pOperator);
+    fillResult = doFillImpl(pOperator, pNextState);
     if (fillResult == NULL) {
       setOperatorCompleted(pOperator);
       break;

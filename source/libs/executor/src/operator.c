@@ -28,12 +28,12 @@
 
 #include "storageapi.h"
 
-SOperatorFpSet createOperatorFpSet(__optr_open_fn_t openFn, __optr_fn_t nextFn, __optr_fn_t cleanup,
+SOperatorFpSet createOperatorFpSet(__optr_open_fn_t openFn, __optr_next_fn_t nextFn, __optr_fn_t cleanup,
                                    __optr_close_fn_t closeFn, __optr_reqBuf_fn_t reqBufFn,
                                    __optr_explain_fn_t explain, __optr_get_ext_fn_t nextExtFn, __optr_notify_fn_t notifyFn) {
   SOperatorFpSet fpSet = {
       ._openFn = openFn,
-      .getNextFn = nextFn,
+      .getNextFn = next,
       .cleanupFn = cleanup,
       .closeFn = closeFn,
       .reqBufFn = reqBufFn,
@@ -42,6 +42,7 @@ SOperatorFpSet createOperatorFpSet(__optr_open_fn_t openFn, __optr_fn_t nextFn, 
       .notifyFn = notifyFn,
       .releaseStreamStateFn = NULL,
       .reloadStreamStateFn = NULL,
+      ._realNextFn = nextFn,
   };
 
   return fpSet;
@@ -71,6 +72,7 @@ int32_t appendDownstream(SOperatorInfo* p, SOperatorInfo** pDownstream, int32_t 
 }
 
 void setOperatorCompleted(SOperatorInfo* pOperator) {
+  if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) return;
   pOperator->status = OP_EXEC_DONE;
   pOperator->cost.totalCost = (taosGetTimestampUs() - pOperator->pTaskInfo->cost.start) / 1000.0;
   setTaskStatus(pOperator->pTaskInfo, TASK_COMPLETED);
@@ -734,28 +736,26 @@ int32_t setOperatorParams(struct SOperatorInfo* pOperator, SOperatorParam* pInpu
   return TSDB_CODE_SUCCESS;
 }
 
-SSDataBlock* getNextBlockFromDownstream(struct SOperatorInfo* pOperator, int32_t idx) {
-  SSDataBlock* pBlock = getNextBlockFromDownstreamImpl(pOperator, idx, true);
-  pOperator->shouldRetryLater = pOperator->pDownstream[idx]->status != OP_EXEC_DONE && pBlock == NULL;
-  return pBlock;
+SSDataBlock* getNextBlockFromDownstream(struct SOperatorInfo* pOperator, int32_t idx, SOpNextState* pNextState) {
+  return getNextBlockFromDownstreamImpl(pOperator, idx, true, pNextState);
 }
 
 bool opShouldRetryLater(struct SOperatorInfo* pOperator) {
   return pOperator->shouldRetryLater;
 }
 
-SSDataBlock* getNextBlockFromDownstreamRemain(struct SOperatorInfo* pOperator, int32_t idx) {
-  return getNextBlockFromDownstreamImpl(pOperator, idx, false);
+SSDataBlock* getNextBlockFromDownstreamRemain(struct SOperatorInfo* pOperator, int32_t idx, SOpNextState* pNextState) {
+  return getNextBlockFromDownstreamImpl(pOperator, idx, false, pNextState);
 }
 
 
-SSDataBlock* optrDefaultGetNextExtFn(struct SOperatorInfo* pOperator, SOperatorParam* pParam) {
+SSDataBlock* optrDefaultGetNextExtFn(struct SOperatorInfo* pOperator, SOperatorParam* pParam, SOpNextState* pNextState) {
   int32_t code = setOperatorParams(pOperator, pParam, OP_GET_PARAM);
   if (TSDB_CODE_SUCCESS != code) {
     pOperator->pTaskInfo->code = code;
     T_LONG_JMP(pOperator->pTaskInfo->env, pOperator->pTaskInfo->code);
   }
-  return pOperator->fpSet.getNextFn(pOperator);
+  return pOperator->fpSet.getNextFn(pOperator, pNextState);
 }
 
 int32_t optrDefaultNotifyFn(struct SOperatorInfo* pOperator, SOperatorParam* pParam) {
@@ -787,6 +787,12 @@ int16_t getOperatorResultBlockId(struct SOperatorInfo* pOperator, int32_t idx) {
     return getOperatorResultBlockId(pOperator->pDownstream[idx], 0);
   }
   return pOperator->resultDataBlockId;
+}
+
+SSDataBlock* next(struct SOperatorInfo* pOperator, SOpNextState* pNextState) {
+  pOperator->pNextState = pNextState;
+  OP_NEXT_STATE_CLEAR(pOperator);
+  return pOperator->fpSet._realNextFn(pOperator, pNextState);
 }
 
 

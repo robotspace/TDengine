@@ -43,7 +43,7 @@ typedef struct SSortOperatorInfo {
   SSortOpGroupIdCalc* pGroupIdCalc;
 } SSortOperatorInfo;
 
-static SSDataBlock* doSort(SOperatorInfo* pOperator);
+static SSDataBlock* doSort(SOperatorInfo* pOperator, SOpNextState* pNextState);
 static int32_t      doOpenSortOperator(SOperatorInfo* pOperator);
 static int32_t      getExplainExecInfo(SOperatorInfo* pOptr, void** pOptrExplain, uint32_t* len);
 
@@ -266,9 +266,15 @@ SSDataBlock* getSortedBlockData(SSortHandle* pHandle, SSDataBlock* pDataBlock, i
   return (pDataBlock->info.rows > 0) ? pDataBlock : NULL;
 }
 
-SSDataBlock* loadNextDataBlock(void* param) {
-  SOperatorInfo* pOperator = (SOperatorInfo*)param;
-  SSDataBlock*   pBlock = pOperator->fpSet.getNextFn(pOperator);
+typedef struct SSortOperNextBlockParam {
+  SOperatorInfo* pDownstream;
+  SOpNextState* pNextState;
+} SSortOperNextBlockParam;
+
+SSDataBlock* loadNextDataBlock(void* param, bool* retryLater) {
+  SSortOperNextBlockParam* pParam = (SSortOperNextBlockParam*)param;
+  SSDataBlock*             pBlock = pParam->pDownstream->fpSet.getNextFn(pParam->pDownstream, pParam->pNextState);
+  if (retryLater && OP_NEXT_STATE_SHOULD_RETRY_LATER(pParam->pDownstream)) *retryLater = true;
   return pBlock;
 }
 
@@ -300,8 +306,10 @@ int32_t doOpenSortOperator(SOperatorInfo* pOperator) {
 
   tsortSetFetchRawDataFp(pInfo->pSortHandle, loadNextDataBlock, applyScalarFunction, pOperator);
 
-  SSortSource* ps = taosMemoryCalloc(1, sizeof(SSortSource));
-  ps->param = pOperator->pDownstream[0];
+  SSortSource* ps = taosMemoryCalloc(1, sizeof(SSortSource) + sizeof(SSortOperNextBlockParam));
+  SSortOperNextBlockParam* pParam = (SSortOperNextBlockParam*)(ps + 1);
+  pParam->pDownstream = pOperator->pDownstream[0];
+  ps->param = pParam;
   ps->onlyRef = true;
   tsortAddSource(pInfo->pSortHandle, ps);
 
@@ -318,7 +326,7 @@ int32_t doOpenSortOperator(SOperatorInfo* pOperator) {
   return TSDB_CODE_SUCCESS;
 }
 
-SSDataBlock* doSort(SOperatorInfo* pOperator) {
+SSDataBlock* doSort(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -474,9 +482,10 @@ SSDataBlock* getGroupSortedBlockData(SSortHandle* pHandle, SSDataBlock* pDataBlo
 typedef struct SGroupSortSourceParam {
   SOperatorInfo*          childOpInfo;
   SGroupSortOperatorInfo* grpSortOpInfo;
+  SOpNextState*           pNextState;
 } SGroupSortSourceParam;
 
-SSDataBlock* fetchNextGroupSortDataBlock(void* param) {
+SSDataBlock* fetchNextGroupSortDataBlock(void* param, bool* retryLater) {
   SGroupSortSourceParam*  source = param;
   SGroupSortOperatorInfo* grpSortOpInfo = source->grpSortOpInfo;
   if (grpSortOpInfo->prefetchedSortInput) {
@@ -485,7 +494,8 @@ SSDataBlock* fetchNextGroupSortDataBlock(void* param) {
     return block;
   } else {
     SOperatorInfo* childOp = source->childOpInfo;
-    SSDataBlock*   block = childOp->fpSet.getNextFn(childOp);
+    SSDataBlock*   block = childOp->fpSet.getNextFn(childOp, source->pNextState);
+    if (OP_NEXT_STATE_SHOULD_RETRY_LATER(childOp)) *retryLater = true;
     if (block != NULL) {
       if (block->info.id.groupId == grpSortOpInfo->currGroupId) {
         grpSortOpInfo->childOpStatus = CHILD_OP_SAME_GROUP;
@@ -546,7 +556,7 @@ int32_t finishSortGroup(SOperatorInfo* pOperator) {
   return TSDB_CODE_SUCCESS;
 }
 
-SSDataBlock* doGroupSort(SOperatorInfo* pOperator) {
+SSDataBlock* doGroupSort(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -562,7 +572,7 @@ SSDataBlock* doGroupSort(SOperatorInfo* pOperator) {
   if (!pInfo->hasGroupId) {
     pInfo->hasGroupId = true;
 
-    pInfo->prefetchedSortInput = getNextBlockFromDownstream(pOperator, 0);
+    pInfo->prefetchedSortInput = getNextBlockFromDownstream(pOperator, 0, pNextState);
     if (pInfo->prefetchedSortInput == NULL) {
       setOperatorCompleted(pOperator);
       return NULL;

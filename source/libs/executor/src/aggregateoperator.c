@@ -57,7 +57,7 @@ static int32_t createDataBlockForEmptyInput(SOperatorInfo* pOperator, SSDataBloc
 static void destroyDataBlockForEmptyInput(bool blockAllocated, SSDataBlock** ppBlock);
 
 static int32_t doAggregateImpl(SOperatorInfo* pOperator, SqlFunctionCtx* pCtx);
-static SSDataBlock* getAggregateResult(SOperatorInfo* pOperator);
+static SSDataBlock* getAggregateResult(SOperatorInfo* pOperator, SOpNextState* pNextState);
 
 static int32_t doInitAggInfoSup(SAggSupporter* pAggSup, SqlFunctionCtx* pCtx, int32_t numOfOutput, size_t keyBufSize,
                          const char* pKey);
@@ -189,8 +189,8 @@ static bool nextGroupedResult(SOperatorInfo* pOperator) {
   }
   while (1) {
     bool blockAllocated = false;
-    pBlock = getNextBlockFromDownstream(pOperator, 0);
-    if (opShouldRetryLater(pOperator)) break;
+    pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
+    if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) break;
     if (pBlock == NULL) {
       if (!pAggInfo->hasValidBlock) {
         createDataBlockForEmptyInput(pOperator, &pBlock);
@@ -237,10 +237,10 @@ static bool nextGroupedResult(SOperatorInfo* pOperator) {
   }
 
   initGroupedResultInfo(&pAggInfo->groupResInfo, pAggInfo->aggSup.pResultRowHashTable, 0);
-  return pBlock != NULL || opShouldRetryLater(pOperator);
+  return pBlock != NULL || OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator);
 }
 
-SSDataBlock* getAggregateResult(SOperatorInfo* pOperator) {
+SSDataBlock* getAggregateResult(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SAggOperatorInfo* pAggInfo = pOperator->info;
   SOptrBasicInfo*   pInfo = &pAggInfo->binfo;
 
@@ -267,7 +267,8 @@ SSDataBlock* getAggregateResult(SOperatorInfo* pOperator) {
         break;
       }
     }
-  } while (pInfo->pRes->info.rows == 0 && hasNewGroups && !opShouldRetryLater(pOperator));
+    if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) break;
+  } while (pInfo->pRes->info.rows == 0 && hasNewGroups);
 
   size_t rows = blockDataGetNumOfRows(pInfo->pRes);
   pOperator->resultInfo.totalRows += rows;

@@ -214,7 +214,7 @@ static SSDataBlock* doLoadRemoteDataImpl(SOperatorInfo* pOperator) {
   }
 }
 
-static SSDataBlock* loadRemoteData(SOperatorInfo* pOperator) {
+static SSDataBlock* loadRemoteData(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExchangeInfo* pExchangeInfo = pOperator->info;
   SExecTaskInfo* pTaskInfo = pOperator->pTaskInfo;
 
@@ -230,6 +230,7 @@ static SSDataBlock* loadRemoteData(SOperatorInfo* pOperator) {
   while (1) {
     SSDataBlock* pBlock = doLoadRemoteDataImpl(pOperator);
     if (pBlock == NULL) {
+      if (pOperator->status != OP_EXEC_DONE) OP_NEXT_STATE_SET_RETRY_LATER(pOperator);
       return NULL;
     }
 
@@ -750,6 +751,7 @@ int32_t doExtractResultBlocks(SExchangeInfo* pExchangeInfo, SSourceDataInfo* pDa
   return code;
 }
 
+// TODO wjm change the function name
 static bool isExchangeReady(SExchangeInfo* pExchangeInfo) {
   int32_t oldCounter = atomic_load_32(&pExchangeInfo->readyCounter);
   while (oldCounter > 0) {

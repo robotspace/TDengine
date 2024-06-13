@@ -38,7 +38,7 @@ typedef struct SEventWindowOperatorInfo {
   SResultRow*        pRow;
 } SEventWindowOperatorInfo;
 
-static SSDataBlock* eventWindowAggregate(SOperatorInfo* pOperator);
+static SSDataBlock* eventWindowAggregate(SOperatorInfo* pOperator, SOpNextState* pNextState);
 static void         destroyEWindowOperatorInfo(void* param);
 static int32_t      eventWindowAggImpl(SOperatorInfo* pOperator, SEventWindowOperatorInfo* pInfo, SSDataBlock* pBlock);
 
@@ -170,7 +170,7 @@ void destroyEWindowOperatorInfo(void* param) {
   taosMemoryFreeClear(param);
 }
 
-static SSDataBlock* eventWindowAggregate(SOperatorInfo* pOperator) {
+static SSDataBlock* eventWindowAggregate(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SEventWindowOperatorInfo* pInfo = pOperator->info;
   SExecTaskInfo*            pTaskInfo = pOperator->pTaskInfo;
 
@@ -183,7 +183,7 @@ static SSDataBlock* eventWindowAggregate(SOperatorInfo* pOperator) {
 
   SOperatorInfo* downstream = pOperator->pDownstream[0];
   while (1) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
     if (pBlock == NULL) {
       break;
     }

@@ -153,7 +153,7 @@ static void buildCountResult(SExprSupp* pExprSup, SCountWindowSupp* pCountSup, S
   doFilter(pBlock, pFilterInfo, NULL);
 }
 
-static SSDataBlock* countWindowAggregate(SOperatorInfo* pOperator) {
+static SSDataBlock* countWindowAggregate(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SCountWindowOperatorInfo* pInfo = pOperator->info;
   SExecTaskInfo*            pTaskInfo = pOperator->pTaskInfo;
   SExprSupp*                pExprSup = &pOperator->exprSupp;
@@ -164,7 +164,7 @@ static SSDataBlock* countWindowAggregate(SOperatorInfo* pOperator) {
   blockDataCleanup(pRes);
 
   while (1) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
     if (pBlock == NULL) {
       break;
     }

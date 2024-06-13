@@ -658,9 +658,9 @@ static FORCE_INLINE int32_t getBlkFromDownstreamOperator(struct SOperatorInfo* p
   }
 
   if (pDownstreamParam) {
-    pBlock = pOperator->pDownstream[downstreamIdx]->fpSet.getNextExtFn(pOperator->pDownstream[downstreamIdx], pDownstreamParam);
+    pBlock = pOperator->pDownstream[downstreamIdx]->fpSet.getNextExtFn(pOperator->pDownstream[downstreamIdx], pDownstreamParam, pOperator->pNextState);
   } else {
-    pBlock = pOperator->pDownstream[downstreamIdx]->fpSet.getNextFn(pOperator->pDownstream[downstreamIdx]);
+    pBlock = pOperator->pDownstream[downstreamIdx]->fpSet.getNextFn(pOperator->pDownstream[downstreamIdx], pOperator->pNextState);
   }
 
   if (pBlock) {
@@ -1311,9 +1311,11 @@ static int32_t initGroupCacheDownstreamCtx(SOperatorInfo*          pOperator) {
   return TSDB_CODE_SUCCESS;
 }
 
-static SSDataBlock* groupCacheGetNext(struct SOperatorInfo* pOperator, SOperatorParam* pParam) {
+static SSDataBlock* groupCacheGetNext(struct SOperatorInfo* pOperator, SOperatorParam* pParam, SOpNextState* pNextState) {
   SSDataBlock* pBlock = NULL;
   int64_t st = 0;
+  pOperator->pNextState = pNextState;
+  OP_NEXT_STATE_CLEAR(pOperator);
 
   if (pOperator->cost.openCost == 0) {
     st = taosGetTimestampUs();

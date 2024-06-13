@@ -1645,7 +1645,7 @@ static void getDBNameFromCondition(SNode* pCondition, const char* dbName) {
   nodesWalkExpr(pCondition, getDBNameFromConditionWalker, (char*)dbName);
 }
 
-static SSDataBlock* doSysTableScan(SOperatorInfo* pOperator) {
+static SSDataBlock* doSysTableScan(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   // build message and send to mnode to fetch the content of system tables.
   SExecTaskInfo*     pTaskInfo = pOperator->pTaskInfo;
   SSysTableScanInfo* pInfo = pOperator->info;
@@ -2267,7 +2267,7 @@ static int32_t doGetTableRowSize(SReadHandle* pHandle, uint64_t uid, int32_t* ro
   return TSDB_CODE_SUCCESS;
 }
 
-static SSDataBlock* doBlockInfoScan(SOperatorInfo* pOperator) {
+static SSDataBlock* doBlockInfoScan(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }

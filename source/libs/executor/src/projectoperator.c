@@ -29,6 +29,7 @@ typedef struct SProjectOperatorInfo {
   SSDataBlock*   pFinalRes;
   bool           inputIgnoreGroup;
   bool           outputIgnoreGroup;
+  uint64_t       totalRows;
 } SProjectOperatorInfo;
 
 typedef struct SIndefOperatorInfo {
@@ -41,8 +42,8 @@ typedef struct SIndefOperatorInfo {
 } SIndefOperatorInfo;
 
 static int32_t      doGenerateSourceData(SOperatorInfo* pOperator);
-static SSDataBlock* doProjectOperation(SOperatorInfo* pOperator);
-static SSDataBlock* doApplyIndefinitFunction(SOperatorInfo* pOperator);
+static SSDataBlock* doProjectOperation(SOperatorInfo* pOperator, SOpNextState* pNextState);
+static SSDataBlock* doApplyIndefinitFunction(SOperatorInfo* pOperator, SOpNextState* pNextState);
 static SArray*      setRowTsColumnOutputInfo(SqlFunctionCtx* pCtx, int32_t numOfCols);
 static void setFunctionResultOutput(SOperatorInfo* pOperator, SOptrBasicInfo* pInfo, SAggSupporter* pSup, int32_t stage,
                                     int32_t numOfExprs);
@@ -244,7 +245,7 @@ static int32_t doIngroupLimitOffset(SLimitInfo* pLimitInfo, uint64_t groupId, SS
   return PROJECT_RETRIEVE_DONE;
 }
 
-SSDataBlock* doProjectOperation(SOperatorInfo* pOperator) {
+SSDataBlock* doProjectOperation(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SProjectOperatorInfo* pProjectInfo = pOperator->info;
   SOptrBasicInfo*       pInfo = &pProjectInfo->binfo;
 
@@ -290,12 +291,14 @@ SSDataBlock* doProjectOperation(SOperatorInfo* pOperator) {
       blockDataCleanup(pRes);
 
       // The downstream exec may change the value of the newgroup, so use a local variable instead.
-      SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+      SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pNextState);
       if (pBlock == NULL) {
         qDebug("set op close, exec %d, status %d rows %" PRId64 , pTaskInfo->execModel, pOperator->status, pFinalRes->info.rows);
         setOperatorCompleted(pOperator);
         break;
       }
+      pProjectInfo->totalRows += pBlock->info.rows;
+      qDebug("wjm project total rows: %"PRId64, pProjectInfo->totalRows);
 //      if (pTaskInfo->execModel == OPTR_EXEC_MODEL_QUEUE) {
 //        qDebug("set status recv");
 //        pOperator->status = OP_EXEC_RECV;
@@ -361,7 +364,7 @@ SSDataBlock* doProjectOperation(SOperatorInfo* pOperator) {
       doFilter(pFinalRes, pOperator->exprSupp.pFilterInfo, NULL);
 
       // when apply the limit/offset for each group, pRes->info.rows may be 0, due to limit constraint.
-      if (pFinalRes->info.rows > 0 || (pOperator->status == OP_EXEC_DONE)) {
+      if (pFinalRes->info.rows > 0 || (pOperator->status == OP_EXEC_DONE) || OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) {
         qDebug("project return %" PRId64 " rows, status %d", pFinalRes->info.rows, pOperator->status);
         break;
       }
@@ -505,7 +508,7 @@ static void doHandleDataBlock(SOperatorInfo* pOperator, SSDataBlock* pBlock, SOp
   }
 }
 
-SSDataBlock* doApplyIndefinitFunction(SOperatorInfo* pOperator) {
+SSDataBlock* doApplyIndefinitFunction(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SIndefOperatorInfo* pIndefInfo = pOperator->info;
   SOptrBasicInfo*     pInfo = &pIndefInfo->binfo;
   SExprSupp*          pSup = &pOperator->exprSupp;
@@ -544,7 +547,7 @@ SSDataBlock* doApplyIndefinitFunction(SOperatorInfo* pOperator) {
     if (pInfo->pRes->info.rows < pOperator->resultInfo.threshold) {
       while (1) {
         // The downstream exec may change the value of the newgroup, so use a local variable instead.
-        SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+        SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pNextState);
         if (pBlock == NULL) {
           setOperatorCompleted(pOperator);
           break;

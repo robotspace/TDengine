@@ -897,7 +897,7 @@ static void doHandleTimeslice(SOperatorInfo* pOperator, SSDataBlock* pBlock) {
   copyPrevGroupKey(&pOperator->exprSupp, pSliceInfo->pPrevGroupKey, pBlock);
 }
 
-static SSDataBlock* doTimeslice(SOperatorInfo* pOperator) {
+static SSDataBlock* doTimeslice(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -927,7 +927,7 @@ static SSDataBlock* doTimeslice(SOperatorInfo* pOperator) {
     }
 
     while (1) {
-      SSDataBlock* pBlock = pSliceInfo->pRemainRes ? pSliceInfo->pRemainRes : getNextBlockFromDownstream(pOperator, 0);
+      SSDataBlock* pBlock = pSliceInfo->pRemainRes ? pSliceInfo->pRemainRes : getNextBlockFromDownstream(pOperator, 0, pNextState);
       if (pBlock == NULL) {
         setOperatorCompleted(pOperator);
         break;

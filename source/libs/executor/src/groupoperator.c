@@ -435,7 +435,7 @@ static SSDataBlock* buildGroupResultDataBlockByHash(SOperatorInfo* pOperator) {
   return (pRes->info.rows == 0) ? NULL : pRes;
 }
 
-static SSDataBlock* hashGroupbyAggregate(SOperatorInfo* pOperator) {
+static SSDataBlock* hashGroupbyAggregate(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -453,7 +453,7 @@ static SSDataBlock* hashGroupbyAggregate(SOperatorInfo* pOperator) {
   SOperatorInfo* downstream = pOperator->pDownstream[0];
 
   while (1) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
     if (pBlock == NULL) {
       break;
     }
@@ -799,7 +799,7 @@ static SSDataBlock* buildPartitionResult(SOperatorInfo* pOperator) {
   return pInfo->binfo.pRes;
 }
 
-static SSDataBlock* hashPartition(SOperatorInfo* pOperator) {
+static SSDataBlock* hashPartition(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -817,7 +817,7 @@ static SSDataBlock* hashPartition(SOperatorInfo* pOperator) {
   SOperatorInfo* downstream = pOperator->pDownstream[0];
 
   while (1) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pNextState);
     if (pBlock == NULL) {
       break;
     }
@@ -1163,7 +1163,7 @@ static void doStreamHashPartitionImpl(SStreamPartitionOperatorInfo* pInfo, SSDat
   }
 }
 
-static SSDataBlock* doStreamHashPartition(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamHashPartition(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -1187,7 +1187,7 @@ static SSDataBlock* doStreamHashPartition(SOperatorInfo* pOperator) {
   SOperatorInfo* downstream = pOperator->pDownstream[0];
   {
     pInfo->pInputDataBlock = NULL;
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, NULL);
     if (pBlock == NULL) {
       setOperatorCompleted(pOperator);
       return NULL;

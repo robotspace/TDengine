@@ -869,7 +869,7 @@ static void doApplyStreamScalarCalculation(SOperatorInfo* pOperator, SSDataBlock
   blockDataUpdateTsWindow(pDstBlock, pInfo->primaryTsCol);
 }
 
-static SSDataBlock* doStreamFill(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamFill(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SStreamFillOperatorInfo* pInfo = pOperator->info;
   SExecTaskInfo*           pTaskInfo = pOperator->pTaskInfo;
 
@@ -901,7 +901,7 @@ static SSDataBlock* doStreamFill(SOperatorInfo* pOperator) {
   while (1) {
     if (pInfo->srcRowIndex >= pInfo->pSrcBlock->info.rows || pInfo->pSrcBlock->info.rows == 0) {
       // If there are delete datablocks, we receive  them first.
-      SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+      SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, NULL);
       if (pBlock == NULL) {
         pOperator->status = OP_RES_TO_RETURN;
         pInfo->pFillInfo->preRowKey = INT64_MIN;

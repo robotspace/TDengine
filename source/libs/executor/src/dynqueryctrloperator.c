@@ -492,7 +492,7 @@ static int32_t buildSeqStbJoinOperatorParam(SDynQueryCtrlOperatorInfo* pInfo, SS
 }
 
 
-static void seqJoinLaunchNewRetrieveImpl(SOperatorInfo* pOperator, SSDataBlock** ppRes) {
+static void seqJoinLaunchNewRetrieveImpl(SOperatorInfo* pOperator, SSDataBlock** ppRes, SOpNextState* pNextState) {
   SDynQueryCtrlOperatorInfo* pInfo = pOperator->info;
   SStbJoinDynCtrlInfo*       pStbJoin = (SStbJoinDynCtrlInfo*)&pInfo->stbJoin;
   SStbJoinPrevJoinCtx*       pPrev = &pStbJoin->ctx.prev;
@@ -505,7 +505,7 @@ static void seqJoinLaunchNewRetrieveImpl(SOperatorInfo* pOperator, SSDataBlock**
   }
 
   qDebug("%s dynamic post task begin", GET_TASKID(pOperator->pTaskInfo));
-  *ppRes = pOperator->pDownstream[1]->fpSet.getNextExtFn(pOperator->pDownstream[1], pParam);
+  *ppRes = pOperator->pDownstream[1]->fpSet.getNextExtFn(pOperator->pDownstream[1], pParam, pNextState);
   if (*ppRes) {
     pPost->isStarted = true;
     pStbJoin->execInfo.postBlkNum++;
@@ -576,7 +576,7 @@ static FORCE_INLINE void seqJoinContinueCurrRetrieve(SOperatorInfo* pOperator, S
   
   qDebug("%s dynQueryCtrl continue to retrieve block from post op", GET_TASKID(pOperator->pTaskInfo));
   
-  *ppRes = getNextBlockFromDownstream(pOperator, 1);
+  *ppRes = getNextBlockFromDownstream(pOperator, 1, pOperator->pNextState);
   if (NULL == *ppRes) {
     handleSeqJoinCurrRetrieveEnd(pOperator, &pInfo->stbJoin);
     pPrev->pListHead->readIdx++;
@@ -768,12 +768,12 @@ static void postProcessStbJoinTableHash(SOperatorInfo* pOperator) {
   }
 }
 
-static void buildStbJoinTableList(SOperatorInfo* pOperator) {
+static void buildStbJoinTableList(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SDynQueryCtrlOperatorInfo* pInfo = pOperator->info;
   SStbJoinDynCtrlInfo*       pStbJoin = (SStbJoinDynCtrlInfo*)&pInfo->stbJoin;
 
   while (true) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
     if (NULL == pBlock) {
       break;
     }
@@ -789,7 +789,7 @@ static void buildStbJoinTableList(SOperatorInfo* pOperator) {
   pStbJoin->ctx.prev.joinBuild = true;
 }
 
-static void seqJoinLaunchNewRetrieve(SOperatorInfo* pOperator, SSDataBlock** ppRes) {
+static void seqJoinLaunchNewRetrieve(SOperatorInfo* pOperator, SSDataBlock** ppRes, SOpNextState* pNextState) {
   SDynQueryCtrlOperatorInfo* pInfo = pOperator->info;
   SStbJoinDynCtrlInfo*       pStbJoin = (SStbJoinDynCtrlInfo*)&pInfo->stbJoin;
   SStbJoinPrevJoinCtx*       pPrev = &pStbJoin->ctx.prev;
@@ -803,7 +803,7 @@ static void seqJoinLaunchNewRetrieve(SOperatorInfo* pOperator, SSDataBlock** ppR
       continue;
     }
     
-    seqJoinLaunchNewRetrieveImpl(pOperator, ppRes);
+    seqJoinLaunchNewRetrieveImpl(pOperator, ppRes, pNextState);
     if (*ppRes) {
       return;
     }
@@ -824,7 +824,7 @@ static FORCE_INLINE SSDataBlock* seqStableJoinComposeRes(SStbJoinDynCtrlInfo*   
 }
 
 
-SSDataBlock* seqStableJoin(SOperatorInfo* pOperator) {
+SSDataBlock* seqStableJoin(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SDynQueryCtrlOperatorInfo* pInfo = pOperator->info;
   SStbJoinDynCtrlInfo*       pStbJoin = (SStbJoinDynCtrlInfo*)&pInfo->stbJoin;
   SSDataBlock* pRes = NULL;
@@ -839,7 +839,7 @@ SSDataBlock* seqStableJoin(SOperatorInfo* pOperator) {
   }
 
   if (!pStbJoin->ctx.prev.joinBuild) {
-    buildStbJoinTableList(pOperator);
+    buildStbJoinTableList(pOperator, pNextState);
     if (pStbJoin->execInfo.prevBlkRows <= 0) {
       setOperatorCompleted(pOperator);
       goto _return;
@@ -851,7 +851,7 @@ SSDataBlock* seqStableJoin(SOperatorInfo* pOperator) {
     goto _return;
   }
   
-  seqJoinLaunchNewRetrieve(pOperator, &pRes);
+  seqJoinLaunchNewRetrieve(pOperator, &pRes, pNextState);
 
 _return:
 
@@ -895,7 +895,7 @@ SOperatorInfo* createDynQueryCtrlOperatorInfo(SOperatorInfo** pDownstream, int32
                                            SDynQueryCtrlPhysiNode* pPhyciNode, SExecTaskInfo* pTaskInfo) {
   SDynQueryCtrlOperatorInfo* pInfo = taosMemoryCalloc(1, sizeof(SDynQueryCtrlOperatorInfo));
   SOperatorInfo*     pOperator = taosMemoryCalloc(1, sizeof(SOperatorInfo));
-  __optr_fn_t        nextFp = NULL;
+  __optr_next_fn_t        nextFp = NULL;
 
   int32_t code = TSDB_CODE_SUCCESS;
   if (pOperator == NULL || pInfo == NULL) {

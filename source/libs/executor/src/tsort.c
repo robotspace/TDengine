@@ -550,9 +550,9 @@ static int32_t adjustMergeTreeForNextTuple(SSortSource* pSource, SMultiwayMergeT
    * since it's last record in buffer has been chosen to be processed, as the winner of loser-tree
    */
   if (pSource->src.rowIndex >= pSource->src.pBlock->info.rows) {
-    pSource->src.rowIndex = 0;
 
     if (pHandle->type == SORT_SINGLESOURCE_SORT) {
+      pSource->src.rowIndex = 0;
       pSource->pageIndex++;
       if (pSource->pageIndex >= taosArrayGetSize(pSource->pageIdList)) {
         qDebug("adjust merge tree. %d source completed %d", *numOfCompleted, pSource->pageIndex);
@@ -585,6 +585,7 @@ static int32_t adjustMergeTreeForNextTuple(SSortSource* pSource, SMultiwayMergeT
         return TSDB_CODE_QRY_QWORKER_RETRY_LATER;
       } else {
         pSource->src.pBlock = pBlock;
+        if (pBlock) pSource->src.rowIndex = 0;
       }
     }
   }
@@ -1779,7 +1780,8 @@ static int32_t createBlocksMergeSortInitialSources(SSortHandle* pHandle) {
   SArray* aBlkSort = taosArrayInit(8, POINTER_BYTES);
   SSHashObj* mUidBlk = tSimpleHashInit(64, taosGetDefaultHashFunction(TSDB_DATA_TYPE_UBIGINT));
   while (1) {
-    SSDataBlock* pBlk = pHandle->fetchfp(pSrc->param);
+    bool retryLater = false;
+    SSDataBlock* pBlk = pHandle->fetchfp(pSrc->param, &retryLater);
 
     bool bExtractedBlock = false;
     bool bSkipBlock = false;
@@ -1903,7 +1905,8 @@ static int32_t createBlocksQuickSortInitialSources(SSortHandle* pHandle) {
   tsortClearOrderdSource(pHandle->pOrderedSource, NULL, NULL);
 
   while (1) {
-    SSDataBlock* pBlock = pHandle->fetchfp(source->param);
+    bool retryLater = false;
+    SSDataBlock* pBlock = pHandle->fetchfp(source->param, &retryLater);
     if (pBlock == NULL) {
       break;
     }
@@ -2071,6 +2074,7 @@ static STupleHandle* tsortBufMergeSortNextTuple(SSortHandle* pHandle) {
 
   if (!pHandle->pMergeTree) {
     if (!tsortTryReadyAllSources(pHandle)) {
+      terrno = TSDB_CODE_QRY_QWORKER_RETRY_LATER;
       qDebug("wjm try ready all sources failed, try next time");
       return NULL;
     }
@@ -2194,7 +2198,8 @@ static int32_t tsortOpenForPQSort(SSortHandle* pHandle) {
   PriorityQueueNode pqNode;
   while (1) {
     // fetch data
-    SSDataBlock* pBlock = pHandle->fetchfp(source->param);
+    bool retryLater = false;
+    SSDataBlock* pBlock = pHandle->fetchfp(source->param, &retryLater);
     if (NULL == pBlock) break;
 
     if (pHandle->beforeFp != NULL) {
@@ -2277,7 +2282,8 @@ static STupleHandle* tsortSingleTableMergeNextTuple(SSortHandle* pHandle) {
     if (pHandle->tupleHandle.rowIndex == -1) return NULL;
     SSortSource** pSource = taosArrayGet(pHandle->pOrderedSource, 0);
     SSortSource*  source = *pSource;
-    SSDataBlock*  pBlock = pHandle->fetchfp(source->param);
+    bool retryLater = false;
+    SSDataBlock*  pBlock = pHandle->fetchfp(source->param, &retryLater);
     if (!pBlock || pBlock->info.rows == 0) {
       setCurrentSourceDone(source, pHandle);
       pHandle->tupleHandle.pBlock = NULL;
@@ -2383,15 +2389,19 @@ static SSDataBlock* tsortFetchSourceNextBlock(SSortHandle* pHandle, SSortSource*
 
   bool         retryLater = false;
   int64_t      st = taosGetTimestampUs();
-  SSDataBlock* pBlock = pHandle->fetchfp(pSource->param);  // TODO wjm pass retryLater into fetchfp
+  SSDataBlock* pBlock = pHandle->fetchfp(pSource->param, &retryLater);
   pSource->fetchUs += taosGetTimestampUs() - st;
   pSource->status = SORT_SOURCE_STATUS_NORMAL;
   if (retryLater) {
     pSource->status = SORT_SOURCE_STATUS_RETRY_LATER;
-    taosAssertDebug(!pBlock, __FILE__, __LINE__, "");
+    assert(!pBlock);
   } else {
     if (!pBlock) setCurrentSourceDone(pSource, pHandle);
     pSource->fetchNum++;
+    if (pBlock && pBlock->info.rows > 0) {
+      pSource->src.rows += pBlock->info.rows;
+      qDebug("wjm source: %p, %"PRId64, pSource, pSource->src.rows);
+    }
   }
 
   return pBlock;
@@ -2403,7 +2413,7 @@ static bool tsortTryReadyAllSources(SSortHandle* pHandle) {
     SSortSource* pSource = taosArrayGetP(pHandle->pOrderedSource, i);
     if (pSource->status != SORT_SOURCE_STATUS_RETRY_LATER) continue;
 
-    SSDataBlock* pBlock = tsortFetchSourceNextBlock(pHandle, pSource);
+    pSource->src.pBlock = tsortFetchSourceNextBlock(pHandle, pSource);
     allSourceReady = allSourceReady && pSource->status != SORT_SOURCE_STATUS_RETRY_LATER;
   }
   return allSourceReady;

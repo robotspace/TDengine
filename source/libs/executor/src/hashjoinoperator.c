@@ -887,7 +887,7 @@ static int32_t hJoinBuildHash(struct SOperatorInfo* pOperator, bool* queryDone) 
   int32_t code = TSDB_CODE_SUCCESS;
   
   while (true) {
-    pBlock = getNextBlockFromDownstream(pOperator, pJoin->pBuild->downStreamIdx);
+    pBlock = getNextBlockFromDownstream(pOperator, pJoin->pBuild->downStreamIdx, pOperator->pNextState);
     if (NULL == pBlock) {
       break;
     }
@@ -968,7 +968,7 @@ void hJoinSetDone(struct SOperatorInfo* pOperator) {
   qDebug("hash Join done");  
 }
 
-static SSDataBlock* hJoinMainProcess(struct SOperatorInfo* pOperator) {
+static SSDataBlock* hJoinMainProcess(struct SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SHJoinOperatorInfo* pJoin = pOperator->info;
   SExecTaskInfo* pTaskInfo = pOperator->pTaskInfo;
   int32_t code = TSDB_CODE_SUCCESS;
@@ -1017,7 +1017,7 @@ static SSDataBlock* hJoinMainProcess(struct SOperatorInfo* pOperator) {
   }
 
   while (true) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, pJoin->pProbe->downStreamIdx);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, pJoin->pProbe->downStreamIdx, pOperator->pNextState);
     if (NULL == pBlock) {
       hJoinSetDone(pOperator);
       break;

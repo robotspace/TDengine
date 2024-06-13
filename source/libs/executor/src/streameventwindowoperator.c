@@ -490,7 +490,7 @@ static SSDataBlock* buildEventResult(SOperatorInfo* pOperator) {
   return NULL;
 }
 
-static SSDataBlock* doStreamEventAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamEventAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -530,7 +530,7 @@ static SSDataBlock* doStreamEventAgg(SOperatorInfo* pOperator) {
     pInfo->pSeUpdated = tSimpleHashInit(64, hashFn);
   }
   while (1) {
-    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream);
+    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream, NULL);
     if (pBlock == NULL) {
       break;
     }

@@ -1153,10 +1153,11 @@ void freeResetOperatorParams(struct SOperatorInfo* pOperator, SOperatorParamType
 }
 
 
-FORCE_INLINE SSDataBlock* getNextBlockFromDownstreamImpl(struct SOperatorInfo* pOperator, int32_t idx, bool clearParam) {
+FORCE_INLINE SSDataBlock* getNextBlockFromDownstreamImpl(struct SOperatorInfo* pOperator, int32_t idx, bool clearParam, SOpNextState* pNextState) {
   if (pOperator->pDownstreamGetParams && pOperator->pDownstreamGetParams[idx]) {
     qDebug("DynOp: op %s start to get block from downstream %s", pOperator->name, pOperator->pDownstream[idx]->name);
-    SSDataBlock* pBlock = pOperator->pDownstream[idx]->fpSet.getNextExtFn(pOperator->pDownstream[idx], pOperator->pDownstreamGetParams[idx]);
+    SSDataBlock* pBlock = pOperator->pDownstream[idx]->fpSet.getNextExtFn(
+        pOperator->pDownstream[idx], pOperator->pDownstreamGetParams[idx], pNextState);
     if (clearParam) {
       freeOperatorParam(pOperator->pDownstreamGetParams[idx], OP_GET_PARAM);
       pOperator->pDownstreamGetParams[idx] = NULL;
@@ -1164,7 +1165,7 @@ FORCE_INLINE SSDataBlock* getNextBlockFromDownstreamImpl(struct SOperatorInfo* p
     return pBlock;
   }
   
-  return pOperator->pDownstream[idx]->fpSet.getNextFn(pOperator->pDownstream[idx]);
+  return pOperator->pDownstream[idx]->fpSet.getNextFn(pOperator->pDownstream[idx], pNextState);
 }
 
 

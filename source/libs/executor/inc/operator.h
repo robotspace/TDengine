@@ -27,21 +27,29 @@ typedef struct SOperatorCostInfo {
 
 struct SOperatorInfo;
 
+typedef enum SOpNextState {
+  OP_NEXT_NORMAL = 0x0,
+  OP_NEXT_RETRY_LATER = 0x1,
+} SOpNextState;
+
 typedef int32_t (*__optr_encode_fn_t)(struct SOperatorInfo* pOperator, char** result, int32_t* length);
 typedef int32_t (*__optr_decode_fn_t)(struct SOperatorInfo* pOperator, char* result);
 
 typedef int32_t (*__optr_open_fn_t)(struct SOperatorInfo* pOptr);
+typedef SSDataBlock* (*__optr_next_fn_t)(struct SOperatorInfo* pOptr, SOpNextState *pNextState);
 typedef SSDataBlock* (*__optr_fn_t)(struct SOperatorInfo* pOptr);
 typedef void (*__optr_close_fn_t)(void* param);
 typedef int32_t (*__optr_explain_fn_t)(struct SOperatorInfo* pOptr, void** pOptrExplain, uint32_t* len);
 typedef int32_t (*__optr_reqBuf_fn_t)(struct SOperatorInfo* pOptr);
-typedef SSDataBlock* (*__optr_get_ext_fn_t)(struct SOperatorInfo* pOptr, SOperatorParam* param);
+typedef SSDataBlock* (*__optr_get_ext_fn_t)(struct SOperatorInfo* pOptr, SOperatorParam* param, SOpNextState* nextState);
 typedef int32_t (*__optr_notify_fn_t)(struct SOperatorInfo* pOptr, SOperatorParam* param);
 typedef void (*__optr_state_fn_t)(struct SOperatorInfo* pOptr);
 
+SSDataBlock* next(struct SOperatorInfo* pOperator, SOpNextState* pNextState);
+
 typedef struct SOperatorFpSet {
   __optr_open_fn_t    _openFn;  // DO NOT invoke this function directly
-  __optr_fn_t         getNextFn;
+  __optr_next_fn_t    getNextFn;
   __optr_fn_t         cleanupFn;  // call this function to release the allocated resources ASAP
   __optr_close_fn_t   closeFn;
   __optr_reqBuf_fn_t  reqBufFn;  // total used buffer for blocking operator
@@ -52,6 +60,7 @@ typedef struct SOperatorFpSet {
   __optr_notify_fn_t  notifyFn;
   __optr_state_fn_t   releaseStreamStateFn;
   __optr_state_fn_t   reloadStreamStateFn;
+  __optr_next_fn_t    _realNextFn;
 } SOperatorFpSet;
 
 enum {
@@ -83,6 +92,7 @@ typedef struct SOperatorInfo {
   int32_t                numOfRealDownstream;
   SOperatorFpSet         fpSet;
   bool                   shouldRetryLater;
+  SOpNextState*          pNextState;
 } SOperatorInfo;
 
 // operator creater functions
@@ -169,9 +179,9 @@ SOperatorInfo* createDynQueryCtrlOperatorInfo(SOperatorInfo** pDownstream, int32
 
 // clang-format on
 
-SOperatorFpSet createOperatorFpSet(__optr_open_fn_t openFn, __optr_fn_t nextFn, __optr_fn_t cleanup,
-                                   __optr_close_fn_t closeFn, __optr_reqBuf_fn_t reqBufFn,
-                                   __optr_explain_fn_t explain, __optr_get_ext_fn_t nextExtFn, __optr_notify_fn_t notifyFn);
+SOperatorFpSet createOperatorFpSet(__optr_open_fn_t openFn, __optr_next_fn_t nextFn, __optr_fn_t cleanup,
+                                   __optr_close_fn_t closeFn, __optr_reqBuf_fn_t reqBufFn, __optr_explain_fn_t explain,
+                                   __optr_get_ext_fn_t nextExtFn, __optr_notify_fn_t notifyFn);
 void           setOperatorStreamStateFn(SOperatorInfo* pOperator, __optr_state_fn_t relaseFn, __optr_state_fn_t reloadFn);
 int32_t        optrDummyOpenFn(SOperatorInfo* pOperator);
 int32_t        appendDownstream(SOperatorInfo* p, SOperatorInfo** pDownstream, int32_t num);
@@ -179,13 +189,15 @@ void           setOperatorCompleted(SOperatorInfo* pOperator);
 void           setOperatorInfo(SOperatorInfo* pOperator, const char* name, int32_t type, bool blocking, int32_t status,
                                void* pInfo, SExecTaskInfo* pTaskInfo);
 int32_t        optrDefaultBufFn(SOperatorInfo* pOperator);
-SSDataBlock*   optrDefaultGetNextExtFn(struct SOperatorInfo* pOperator, SOperatorParam* pParam);
+SSDataBlock*   optrDefaultGetNextExtFn(struct SOperatorInfo* pOperator, SOperatorParam* pParam, SOpNextState* pNextState);
 int32_t        optrDefaultNotifyFn(struct SOperatorInfo* pOperator, SOperatorParam* pParam);
 
 bool           opShouldRetryLater(struct SOperatorInfo* pOperator);
-SSDataBlock*   getNextBlockFromDownstream(struct SOperatorInfo* pOperator, int32_t idx);
-SSDataBlock*   getNextBlockFromDownstreamRemain(struct SOperatorInfo* pOperator, int32_t idx);
+SSDataBlock*   getNextBlockFromDownstream(struct SOperatorInfo* pOperator, int32_t idx, SOpNextState* pNextState);
+SSDataBlock*   getNextBlockFromDownstreamRemain(struct SOperatorInfo* pOperator, int32_t idx, SOpNextState* pNextState);
 int16_t        getOperatorResultBlockId(struct SOperatorInfo* pOperator, int32_t idx);
+SSDataBlock*   getNextBlockFromDownstreamImpl(struct SOperatorInfo* pOperator, int32_t idx, bool clearParam,
+                                              SOpNextState* pNextState);
 
 SOperatorInfo* createOperator(SPhysiNode* pPhyNode, SExecTaskInfo* pTaskInfo, SReadHandle* pHandle, SNode* pTagCond,
                               SNode* pTagIndexCond, const char* pUser, const char* dbname);
@@ -196,6 +208,19 @@ int32_t        getTableScanInfo(SOperatorInfo* pOperator, int32_t* order, int32_
 int32_t        stopTableScanOperator(SOperatorInfo* pOperator, const char* pIdStr, SStorageAPI* pAPI);
 int32_t        getOperatorExplainExecInfo(struct SOperatorInfo* operatorInfo, SArray* pExecInfoList);
 void *         getOperatorParam(int32_t opType, SOperatorParam* param, int32_t idx);
+
+#define OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator) \
+  ((pOperator->pNextState) ? (*pOperator->pNextState) == OP_NEXT_RETRY_LATER : false)
+
+#define OP_NEXT_STATE_SET_RETRY_LATER(pOperator)                              \
+  do {                                                                        \
+    if (pOperator->pNextState) (*pOperator->pNextState) = OP_NEXT_RETRY_LATER; \
+  } while (0)
+
+#define OP_NEXT_STATE_CLEAR(pOperator)                                    \
+  do {                                                                    \
+    if (pOperator->pNextState) (*pOperator->pNextState) = OP_NEXT_NORMAL; \
+  } while (0)
 
 #ifdef __cplusplus
 }

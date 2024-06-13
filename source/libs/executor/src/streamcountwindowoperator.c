@@ -510,7 +510,7 @@ void deleteCountWinState(SStreamAggSupporter* pAggSup, SSDataBlock* pBlock, SSHa
   taosArrayDestroy(pWins);
 }
 
-static SSDataBlock* doStreamCountAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamCountAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExprSupp*                     pSup = &pOperator->exprSupp;
   SStreamCountAggOperatorInfo*   pInfo = pOperator->info;
   SOptrBasicInfo*                pBInfo = &pInfo->binfo;
@@ -549,7 +549,7 @@ static SSDataBlock* doStreamCountAgg(SOperatorInfo* pOperator) {
     pInfo->pStUpdated = tSimpleHashInit(64, hashFn);
   }
   while (1) {
-    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream);
+    SSDataBlock* pBlock = downstream->fpSet.getNextFn(downstream, NULL);
     if (pBlock == NULL) {
       break;
     }

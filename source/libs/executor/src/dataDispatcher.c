@@ -52,6 +52,7 @@ typedef struct SDataDispatchHandle {
   void*               pCompressBuf;
   int32_t             bufSize;
   TdThreadMutex       mutex;
+  uint64_t            totalRows;
 } SDataDispatchHandle;
 
 // clang-format off
@@ -183,6 +184,8 @@ static int32_t putDataBlock(SDataSinkHandle* pHandle, const SInputData* pInput, 
   if (code != 0) {
     return code;
   }
+  pDispatcher->totalRows += pInput->pData->info.rows;
+  qDebug("wjm dispatcher: %p, totalRows: %"PRId64, pDispatcher, pDispatcher->totalRows);
 
   int32_t status = updateStatus(pDispatcher);
   *pContinue = (status == DS_BUF_LOW || status == DS_BUF_EMPTY);

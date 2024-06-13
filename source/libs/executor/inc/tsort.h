@@ -39,6 +39,7 @@ typedef struct SMultiMergeSource {
   int32_t      type;
   int32_t      rowIndex;
   SSDataBlock* pBlock;
+  uint64_t     rows;
 } SMultiMergeSource;
 
 typedef struct SSortSource {
@@ -73,7 +74,7 @@ typedef struct SMsortComparParam {
 typedef struct SSortHandle  SSortHandle;
 typedef struct STupleHandle STupleHandle;
 
-typedef SSDataBlock* (*_sort_fetch_block_fn_t)(void* param);
+typedef SSDataBlock* (*_sort_fetch_block_fn_t)(void* param, bool* retrylater);
 typedef int32_t (*_sort_merge_compar_fn_t)(const void* p1, const void* p2, void* param);
 
 /**

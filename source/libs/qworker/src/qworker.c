@@ -155,15 +155,18 @@ int32_t qwExecTask(QW_FPARAMS_DEF, SQWTaskCtx *ctx, bool *queryStop) {
         if (code == TSDB_CODE_QRY_QWORKER_RETRY_LATER) {
           QW_TASK_DLOG("wjm qworker retry later: %d", 1);
           code = TSDB_CODE_SUCCESS;
-          if (queryStop) *queryStop = true;
-          break;
-        }
-        if (code != TSDB_CODE_OPS_NOT_SUPPORT) {
-          QW_TASK_ELOG("qExecTask failed, code:%x - %s", code, tstrerror(code));
+          if (taosArrayGetSize(pResList) == 0) {
+            if (queryStop) *queryStop = true;
+            break;
+          }
         } else {
-          QW_TASK_DLOG("qExecTask failed, code:%x - %s", code, tstrerror(code));
+          if (code != TSDB_CODE_OPS_NOT_SUPPORT) {
+            QW_TASK_ELOG("qExecTask failed, code:%x - %s", code, tstrerror(code));
+          } else {
+            QW_TASK_DLOG("qExecTask failed, code:%x - %s", code, tstrerror(code));
+          }
+          QW_ERR_JRET(code);
         }
-        QW_ERR_JRET(code);
       }
     }
 

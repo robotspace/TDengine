@@ -613,16 +613,16 @@ int32_t qExecTaskOpt(qTaskInfo_t tinfo, SArray* pResList, uint64_t* useconds, bo
 
   int32_t      current = 0;
   SSDataBlock* pRes = NULL;
-
+  SOpNextState nextState = OP_NEXT_NORMAL;
   int64_t st = taosGetTimestampUs();
 
   if (pTaskInfo->pOpParam && !pTaskInfo->paramSet) {
     pTaskInfo->paramSet = true;
-    pRes = pTaskInfo->pRoot->fpSet.getNextExtFn(pTaskInfo->pRoot, pTaskInfo->pOpParam);
+    pRes = pTaskInfo->pRoot->fpSet.getNextExtFn(pTaskInfo->pRoot, pTaskInfo->pOpParam, &nextState);
   } else {
-    pRes = pTaskInfo->pRoot->fpSet.getNextFn(pTaskInfo->pRoot);
+    pRes = pTaskInfo->pRoot->fpSet.getNextFn(pTaskInfo->pRoot, &nextState);
   }
-  pTaskInfo->pRoot->shouldRetryLater = pRes == NULL && pTaskInfo->pRoot->status != OP_EXEC_DONE;
+  pTaskInfo->pRoot->shouldRetryLater = OP_NEXT_STATE_SHOULD_RETRY_LATER(pTaskInfo->pRoot);
 
   if(pRes == NULL) {
     st = taosGetTimestampUs();
@@ -654,8 +654,8 @@ int32_t qExecTaskOpt(qTaskInfo_t tinfo, SArray* pResList, uint64_t* useconds, bo
       break;
     }
 
-    pRes = pTaskInfo->pRoot->fpSet.getNextFn(pTaskInfo->pRoot);
-    pTaskInfo->pRoot->shouldRetryLater = pRes == NULL && pTaskInfo->pRoot->status != OP_EXEC_DONE;
+    pRes = pTaskInfo->pRoot->fpSet.getNextFn(pTaskInfo->pRoot, &nextState);
+    pTaskInfo->pRoot->shouldRetryLater = OP_NEXT_STATE_SHOULD_RETRY_LATER(pTaskInfo->pRoot);
   }
   if (pTaskInfo->pSubplan->dynamicRowThreshold) {
     pTaskInfo->pSubplan->rowsThreshold -= current;
@@ -739,7 +739,7 @@ int32_t qExecTask(qTaskInfo_t tinfo, SSDataBlock** pRes, uint64_t* useconds) {
 
   int64_t st = taosGetTimestampUs();
 
-  *pRes = pTaskInfo->pRoot->fpSet.getNextFn(pTaskInfo->pRoot);
+  *pRes = pTaskInfo->pRoot->fpSet.getNextFn(pTaskInfo->pRoot, NULL);
   uint64_t el = (taosGetTimestampUs() - st);
 
   pTaskInfo->cost.elapsedTime += el;

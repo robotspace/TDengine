@@ -55,11 +55,18 @@ typedef struct SMultiwayMergeOperatorInfo {
   bool           ignoreGroupId;
   uint64_t       groupId;
   bool           inputWithGroupId;
+  uint64_t       totalRows;
 } SMultiwayMergeOperatorInfo;
 
-SSDataBlock* sortMergeloadNextDataBlock(void* param) {
-  SOperatorInfo* pOperator = (SOperatorInfo*)param;
-  SSDataBlock*   pBlock = pOperator->fpSet.getNextFn(pOperator);
+typedef struct SSortMergeLoadNextParam {
+  SOperatorInfo* pDownstream;
+  SOpNextState   pNextState;
+}SSortMergeLoadNextParam;
+
+SSDataBlock* sortMergeloadNextDataBlock(void* param, bool* pRetryLater) {
+  SSortMergeLoadNextParam* pParam = (SSortMergeLoadNextParam*)param;
+  SSDataBlock*             pBlock = pParam->pDownstream->fpSet.getNextFn(pParam->pDownstream, &pParam->pNextState);
+  if (pRetryLater && OP_NEXT_STATE_SHOULD_RETRY_LATER(pParam->pDownstream)) *pRetryLater = true;
   return pBlock;
 }
 
@@ -82,8 +89,10 @@ int32_t openSortMergeOperator(SOperatorInfo* pOperator) {
       pDownstream->fpSet._openFn(pDownstream);
     }
 
-    SSortSource* ps = taosMemoryCalloc(1, sizeof(SSortSource));
-    ps->param = pDownstream;
+    SSortSource* ps = taosMemoryCalloc(1, sizeof(SSortSource) + sizeof(SSortMergeLoadNextParam));
+    SSortMergeLoadNextParam* pParam = (SSortMergeLoadNextParam*)(ps + 1);
+    pParam->pDownstream = pDownstream;
+    ps->param = pParam;
     ps->onlyRef = true;
 
     tsortAddSource(pSortMergeInfo->pSortHandle, ps);
@@ -145,7 +154,7 @@ static void doGetSortedBlockData(SMultiwayMergeOperatorInfo* pInfo, SSortHandle*
   }
 }
 
-SSDataBlock* doSortMerge(SOperatorInfo* pOperator) {
+SSDataBlock* doSortMerge(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExecTaskInfo*              pTaskInfo = pOperator->pTaskInfo;
   SMultiwayMergeOperatorInfo* pInfo = pOperator->info;
   SSortMergeInfo*             pSortMergeInfo = &pInfo->sortMergeInfo;
@@ -174,13 +183,13 @@ SSDataBlock* doSortMerge(SOperatorInfo* pOperator) {
 
   while (1) {
     doGetSortedBlockData(pInfo, pHandle, capacity, p, &newgroup);
-    if (terrno == TSDB_CODE_QRY_QWORKER_RETRY_LATER) {
-      pOperator->shouldRetryLater = true; // TODO wjm
-      terrno = TSDB_CODE_SUCCESS;
-    } else {
-      pOperator->shouldRetryLater = false;
-    }
+
     if (p->info.rows == 0) {
+      // set retry later ONLY when no rows retrieved
+      if (terrno == TSDB_CODE_QRY_QWORKER_RETRY_LATER) {
+        OP_NEXT_STATE_SET_RETRY_LATER(pOperator);
+        terrno = TSDB_CODE_SUCCESS;
+      }
       break;
     }
 
@@ -215,6 +224,8 @@ SSDataBlock* doSortMerge(SOperatorInfo* pOperator) {
     pDataBlock->info.dataLoad = 1;
   }
 
+  pInfo->totalRows += pDataBlock->info.rows;
+  qDebug("wjm merge sort totalrows: %"PRId64, pInfo->totalRows);
   qDebug("%s get sorted block, groupId:0x%" PRIx64 " rows:%" PRId64 , GET_TASKID(pTaskInfo), pDataBlock->info.id.groupId,
          pDataBlock->info.rows);
 
@@ -270,7 +281,7 @@ int32_t openNonSortMergeOperator(SOperatorInfo* pOperator) {
   return TSDB_CODE_SUCCESS;
 }
 
-SSDataBlock* doNonSortMerge(SOperatorInfo* pOperator) {
+SSDataBlock* doNonSortMerge(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExecTaskInfo*              pTaskInfo = pOperator->pTaskInfo;
   SMultiwayMergeOperatorInfo* pInfo = pOperator->info;
   SNonSortMergeInfo*          pNonSortMerge = &pInfo->nsortMergeInfo;
@@ -281,8 +292,9 @@ SSDataBlock* doNonSortMerge(SOperatorInfo* pOperator) {
 
   int32_t idx = NON_SORT_NEXT_SRC(pNonSortMerge, pNonSortMerge->lastSourceIdx);
   while (idx < pNonSortMerge->sourceNum) {
-    pBlock = getNextBlockFromDownstream(pOperator, pNonSortMerge->pSourceStatus[idx]);
+    pBlock = getNextBlockFromDownstream(pOperator, pNonSortMerge->pSourceStatus[idx], pNextState);
     if (NULL == pBlock) {
+      if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) break;
       TSWAP(pNonSortMerge->pSourceStatus[pNonSortMerge->sourceWorkIdx], pNonSortMerge->pSourceStatus[idx]);
       pNonSortMerge->sourceWorkIdx++;
       idx = NON_SORT_NEXT_SRC(pNonSortMerge, pNonSortMerge->lastSourceIdx);
@@ -333,7 +345,7 @@ int32_t copyColumnsValue(SNodeList* pNodeList, uint64_t targetBlkId, SSDataBlock
   return TSDB_CODE_SUCCESS;
 }
 
-SSDataBlock* doColsMerge(SOperatorInfo* pOperator) {
+SSDataBlock* doColsMerge(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExecTaskInfo*              pTaskInfo = pOperator->pTaskInfo;
   SMultiwayMergeOperatorInfo* pInfo = pOperator->info;
   SSDataBlock*                pBlock = NULL;
@@ -343,7 +355,7 @@ SSDataBlock* doColsMerge(SOperatorInfo* pOperator) {
   qDebug("start to merge columns, %s", GET_TASKID(pTaskInfo));
 
   for (int32_t i = 0; i < 2; ++i) {
-    pBlock = getNextBlockFromDownstream(pOperator, i);
+    pBlock = getNextBlockFromDownstream(pOperator, i, pNextState);
     if (pBlock && pBlock->info.rows > 1) {
       qError("more than 1 row returned from downstream, rows:%" PRId64, pBlock->info.rows);
       T_LONG_JMP(pTaskInfo->env, TSDB_CODE_QRY_EXECUTOR_INTERNAL_ERROR);
@@ -407,7 +419,7 @@ int32_t openMultiwayMergeOperator(SOperatorInfo* pOperator) {
   return code;
 }
 
-SSDataBlock* doMultiwayMerge(SOperatorInfo* pOperator) {
+SSDataBlock* doMultiwayMerge(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -422,7 +434,7 @@ SSDataBlock* doMultiwayMerge(SOperatorInfo* pOperator) {
   }
 
   if (NULL != gMultiwayMergeFps[pInfo->type].getNextFn) {
-    pBlock = (*gMultiwayMergeFps[pInfo->type].getNextFn)(pOperator);
+    pBlock = (*gMultiwayMergeFps[pInfo->type].getNextFn)(pOperator, pNextState);
   }
   if (pBlock != NULL) {
     pOperator->resultInfo.totalRows += pBlock->info.rows;

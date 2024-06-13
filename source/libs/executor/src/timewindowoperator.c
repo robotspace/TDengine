@@ -867,7 +867,7 @@ static int32_t doOpenIntervalAgg(SOperatorInfo* pOperator) {
   int64_t st = taosGetTimestampUs();
 
   while (1) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
     if (pBlock == NULL) {
       break;
     }
@@ -989,7 +989,7 @@ static int32_t openStateWindowAggOptr(SOperatorInfo* pOperator) {
 
   SOperatorInfo* downstream = pOperator->pDownstream[0];
   while (1) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
     if (pBlock == NULL) {
       break;
     }
@@ -1017,7 +1017,7 @@ static int32_t openStateWindowAggOptr(SOperatorInfo* pOperator) {
   return TSDB_CODE_SUCCESS;
 }
 
-static SSDataBlock* doStateWindowAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doStateWindowAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -1052,7 +1052,7 @@ static SSDataBlock* doStateWindowAgg(SOperatorInfo* pOperator) {
   return (pBInfo->pRes->info.rows == 0) ? NULL : pBInfo->pRes;
 }
 
-static SSDataBlock* doBuildIntervalResult(SOperatorInfo* pOperator) {
+static SSDataBlock* doBuildIntervalResult(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SIntervalAggOperatorInfo* pInfo = pOperator->info;
   SExecTaskInfo*            pTaskInfo = pOperator->pTaskInfo;
 
@@ -1378,7 +1378,7 @@ static void doSessionWindowAggImpl(SOperatorInfo* pOperator, SSessionAggOperator
                                   pRowSup->numOfRows, pBlock->info.rows, numOfOutput);
 }
 
-static SSDataBlock* doSessionWindowAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doSessionWindowAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -1412,7 +1412,7 @@ static SSDataBlock* doSessionWindowAgg(SOperatorInfo* pOperator) {
   SOperatorInfo* downstream = pOperator->pDownstream[0];
 
   while (1) {
-    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0);
+    SSDataBlock* pBlock = getNextBlockFromDownstream(pOperator, 0, pNextState);
     if (pBlock == NULL) {
       break;
     }
@@ -1738,7 +1738,7 @@ static void doMergeAlignedIntervalAgg(SOperatorInfo* pOperator) {
   while (1) {
     SSDataBlock* pBlock = NULL;
     if (pMiaInfo->prefetchedBlock == NULL) {
-      pBlock = getNextBlockFromDownstream(pOperator, 0);
+      pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
     } else {
       pBlock = pMiaInfo->prefetchedBlock;
       pMiaInfo->prefetchedBlock = NULL;
@@ -1793,7 +1793,7 @@ static void doMergeAlignedIntervalAgg(SOperatorInfo* pOperator) {
   }
 }
 
-static SSDataBlock* mergeAlignedIntervalAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* mergeAlignedIntervalAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExecTaskInfo* pTaskInfo = pOperator->pTaskInfo;
 
   SMergeAlignedIntervalAggOperatorInfo* pMiaInfo = pOperator->info;
@@ -2050,7 +2050,7 @@ static void doMergeIntervalAggImpl(SOperatorInfo* pOperatorInfo, SResultRowInfo*
   }
 }
 
-static SSDataBlock* doMergeIntervalAgg(SOperatorInfo* pOperator) {
+static SSDataBlock* doMergeIntervalAgg(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExecTaskInfo* pTaskInfo = pOperator->pTaskInfo;
 
   SMergeIntervalAggOperatorInfo* miaInfo = pOperator->info;
@@ -2070,7 +2070,7 @@ static SSDataBlock* doMergeIntervalAgg(SOperatorInfo* pOperator) {
     while (1) {
       SSDataBlock* pBlock = NULL;
       if (miaInfo->prefetchedBlock == NULL) {
-        pBlock = getNextBlockFromDownstream(pOperator, 0);
+        pBlock = getNextBlockFromDownstream(pOperator, 0, pNextState);
       } else {
         pBlock = miaInfo->prefetchedBlock;
         miaInfo->groupId = pBlock->info.id.groupId;

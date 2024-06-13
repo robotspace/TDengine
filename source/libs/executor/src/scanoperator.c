@@ -761,7 +761,7 @@ static SSDataBlock* getBlockForEmptyTable(SOperatorInfo* pOperator, const STable
   return pBlock;
 }
 
-static SSDataBlock* doTableScanImpl(SOperatorInfo* pOperator) {
+static SSDataBlock* doTableScanImpl(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   STableScanInfo* pTableScanInfo = pOperator->info;
   SExecTaskInfo*  pTaskInfo = pOperator->pTaskInfo;
   SStorageAPI*    pAPI = &pTaskInfo->storageAPI;
@@ -840,7 +840,7 @@ static SSDataBlock* doGroupedTableScan(SOperatorInfo* pOperator) {
 
   // do the ascending order traverse in the first place.
   while (pTableScanInfo->scanTimes < pTableScanInfo->scanInfo.numOfAsc) {
-    SSDataBlock* p = doTableScanImpl(pOperator);
+    SSDataBlock* p = doTableScanImpl(pOperator, NULL);
     if (p != NULL) {
       markGroupProcessed(pTableScanInfo, p->info.id.groupId);
       return p;
@@ -869,7 +869,7 @@ static SSDataBlock* doGroupedTableScan(SOperatorInfo* pOperator) {
     }
 
     while (pTableScanInfo->scanTimes < total) {
-      SSDataBlock* p = doTableScanImpl(pOperator);
+      SSDataBlock* p = doTableScanImpl(pOperator, NULL);
       if (p != NULL) {
         markGroupProcessed(pTableScanInfo, p->info.id.groupId);
         return p;
@@ -1058,7 +1058,7 @@ static SSDataBlock* groupSeqTableScan(SOperatorInfo* pOperator) {
   return result;
 }
 
-static SSDataBlock* doTableScan(SOperatorInfo* pOperator) {
+static SSDataBlock* doTableScan(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   STableScanInfo* pInfo = pOperator->info;
   SExecTaskInfo*  pTaskInfo = pOperator->pTaskInfo;
   SStorageAPI*    pAPI = &pTaskInfo->storageAPI;
@@ -1527,11 +1527,11 @@ static SSDataBlock* doRangeScan(SStreamScanInfo* pInfo, SSDataBlock* pSDB, int32
 
   while (1) {
     SSDataBlock* pResult = NULL;
-    pResult = doTableScan(pInfo->pTableScanOp);
+    pResult = doTableScan(pInfo->pTableScanOp, NULL);
     if (!pResult) {
       prepareRes = prepareRangeScan(pInfo, pSDB, pRowIndex);
       // scan next window data
-      pResult = doTableScan(pInfo->pTableScanOp);
+      pResult = doTableScan(pInfo->pTableScanOp, NULL);
     }
     if (!pResult) {
       if (prepareRes) {
@@ -2277,7 +2277,7 @@ static void processPrimaryKey(SSDataBlock* pBlock, bool hasPrimaryKey, STqOffset
   tqOffsetResetToData(offset, pBlock->info.id.uid, pBlock->info.window.ekey, val);
 }
 
-static SSDataBlock* doQueueScan(SOperatorInfo* pOperator) {
+static SSDataBlock* doQueueScan(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExecTaskInfo* pTaskInfo = pOperator->pTaskInfo;
   SStorageAPI*   pAPI = &pTaskInfo->storageAPI;
 
@@ -2291,7 +2291,7 @@ static SSDataBlock* doQueueScan(SOperatorInfo* pOperator) {
   }
 
   if (pTaskInfo->streamInfo.currentOffset.type == TMQ_OFFSET__SNAPSHOT_DATA) {
-    SSDataBlock* pResult = doTableScan(pInfo->pTableScanOp);
+    SSDataBlock* pResult = doTableScan(pInfo->pTableScanOp, NULL);
 
     if (pResult && pResult->info.rows > 0) {
       bool hasPrimaryKey = pAPI->tqReaderFn.tqGetTablePrimaryKey(pInfo->tqReader);
@@ -2478,7 +2478,7 @@ static bool isStreamWindow(SStreamScanInfo* pInfo) {
   return isIntervalWindow(pInfo) || isSessionWindow(pInfo) || isStateWindow(pInfo) || isCountWindow(pInfo);
 }
 
-static SSDataBlock* doStreamScan(SOperatorInfo* pOperator) {
+static SSDataBlock* doStreamScan(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   // NOTE: this operator does never check if current status is done or not
   SExecTaskInfo* pTaskInfo = pOperator->pTaskInfo;
   const char*    id = GET_TASKID(pTaskInfo);
@@ -2537,7 +2537,7 @@ static SSDataBlock* doStreamScan(SOperatorInfo* pOperator) {
         break;
     }
 
-    pInfo->pRecoverRes = doTableScan(pInfo->pTableScanOp);
+    pInfo->pRecoverRes = doTableScan(pInfo->pTableScanOp, NULL);
     if (pInfo->pRecoverRes != NULL) {
       calBlockTbName(pInfo, pInfo->pRecoverRes, 0);
       if (!pInfo->igCheckUpdate && pInfo->pUpdateInfo) {
@@ -2851,7 +2851,7 @@ static SArray* extractTableIdList(const STableListInfo* pTableListInfo) {
   return tableIdList;
 }
 
-static SSDataBlock* doRawScan(SOperatorInfo* pOperator) {
+static SSDataBlock* doRawScan(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExecTaskInfo* pTaskInfo = pOperator->pTaskInfo;
   SStorageAPI*   pAPI = &pTaskInfo->storageAPI;
 
@@ -3294,7 +3294,7 @@ SOperatorInfo* createStreamScanOperatorInfo(SReadHandle* pHandle, STableScanPhys
                   pTaskInfo);
   pOperator->exprSupp.numOfExprs = taosArrayGetSize(pInfo->pRes->pDataBlock);
 
-  __optr_fn_t nextFn = (pTaskInfo->execModel == OPTR_EXEC_MODEL_STREAM) ? doStreamScan : doQueueScan;
+  __optr_next_fn_t nextFn = (pTaskInfo->execModel == OPTR_EXEC_MODEL_STREAM) ? doStreamScan : doQueueScan;
   pOperator->fpSet =
       createOperatorFpSet(optrDummyOpenFn, nextFn, NULL, destroyStreamScanOperatorInfo, optrDefaultBufFn, NULL, optrDefaultGetNextExtFn, NULL);
   setOperatorStreamStateFn(pOperator, streamScanReleaseState, streamScanReloadState);
@@ -3537,7 +3537,7 @@ static int32_t tagScanFillResultBlock(SOperatorInfo* pOperator, SSDataBlock* pRe
   return 0;
 }
 
-static SSDataBlock* doTagScanFromCtbIdx(SOperatorInfo* pOperator) {
+static SSDataBlock* doTagScanFromCtbIdx(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -3619,7 +3619,7 @@ static SSDataBlock* doTagScanFromCtbIdx(SOperatorInfo* pOperator) {
   return (pRes->info.rows == 0) ? NULL : pInfo->pRes;
 }
 
-static SSDataBlock* doTagScanFromMetaEntry(SOperatorInfo* pOperator) {
+static SSDataBlock* doTagScanFromMetaEntry(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -3732,7 +3732,7 @@ SOperatorInfo* createTagScanOperatorInfo(SReadHandle* pReadHandle, STagScanPhysi
       nodesRewriteExprPostOrder(&pTagCond, tagScanRewriteTagColumn, (void*)&pInfo->filterCtx);
     }
   }
-  __optr_fn_t tagScanNextFn = (pTagScanNode->onlyMetaCtbIdx) ? doTagScanFromCtbIdx : doTagScanFromMetaEntry;
+  __optr_next_fn_t tagScanNextFn = (pTagScanNode->onlyMetaCtbIdx) ? doTagScanFromCtbIdx : doTagScanFromMetaEntry;
   pOperator->fpSet =
       createOperatorFpSet(optrDummyOpenFn, tagScanNextFn, NULL, destroyTagScanOperatorInfo, optrDefaultBufFn, NULL, optrDefaultGetNextExtFn, NULL);
 
@@ -4125,7 +4125,7 @@ static int32_t stopSubTablesTableMergeScan(STableMergeScanInfo* pInfo) {
   return TSDB_CODE_SUCCESS;
 }
 
-SSDataBlock* doTableMergeScanParaSubTables(SOperatorInfo* pOperator) {
+SSDataBlock* doTableMergeScanParaSubTables(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -4249,7 +4249,7 @@ static void doGetBlockForTableMergeScan(SOperatorInfo* pOperator, bool* pFinishe
   return;
 }
 
-static SSDataBlock* getBlockForTableMergeScan(void* param) {
+static SSDataBlock* getBlockForTableMergeScan(void* param, bool *retryLater) {
   STableMergeScanSortSourceParam* source = param;
 
   SOperatorInfo*       pOperator = source->pOperator;
@@ -4537,7 +4537,7 @@ SSDataBlock* getSortedTableMergeScanBlockData(SSortHandle* pHandle, SSDataBlock*
   return (pResBlock->info.rows > 0) ? pResBlock : NULL;
 }
 
-SSDataBlock* doTableMergeScan(SOperatorInfo* pOperator) {
+SSDataBlock* doTableMergeScan(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   if (pOperator->status == OP_EXEC_DONE) {
     return NULL;
   }
@@ -4773,7 +4773,7 @@ _error:
 
 // ====================================================================================================================
 // TableCountScanOperator
-static SSDataBlock* doTableCountScan(SOperatorInfo* pOperator);
+static SSDataBlock* doTableCountScan(SOperatorInfo* pOperator, SOpNextState* pNextState);
 static void         destoryTableCountScanOperator(void* param);
 static void         buildVnodeGroupedStbTableCount(STableCountScanOperatorInfo* pInfo, STableCountScanSupp* pSupp,
                                                    SSDataBlock* pRes, char* dbName, tb_uid_t stbUid, SStorageAPI* pAPI);
@@ -5013,7 +5013,7 @@ static void buildSysDbGroupedTableCount(SOperatorInfo* pOperator, STableCountSca
   pInfo->currGrpIdx++;
 }
 
-static SSDataBlock* doTableCountScan(SOperatorInfo* pOperator) {
+static SSDataBlock* doTableCountScan(SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SExecTaskInfo*               pTaskInfo = pOperator->pTaskInfo;
   STableCountScanOperatorInfo* pInfo = pOperator->info;
   STableCountScanSupp*         pSupp = &pInfo->supp;

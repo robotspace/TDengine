@@ -975,7 +975,6 @@ int32_t      buildTableScanOperatorParam(SOperatorParam** ppRes, SArray* pUidLis
 void         freeExchangeGetBasicOperatorParam(void* pParam);
 void         freeOperatorParam(SOperatorParam* pParam, SOperatorParamType type);
 void         freeResetOperatorParams(struct SOperatorInfo* pOperator, SOperatorParamType type, bool allFree);
-SSDataBlock* getNextBlockFromDownstreamImpl(struct SOperatorInfo* pOperator, int32_t idx, bool clearParam);
 void         getCountWinRange(SStreamAggSupporter* pAggSup, const SSessionKey* pKey, EStreamType mode, SSessionKey* pDelRange);
 bool         doDeleteSessionWindow(SStreamAggSupporter* pAggSup, SSessionKey* pKey);
 

@@ -975,7 +975,7 @@ SSDataBlock* mJoinGrpRetrieveImpl(SMJoinOperatorInfo* pJoin, SMJoinTableCtx* pTa
       return NULL;
     }
 
-    pTmp = getNextBlockFromDownstreamRemain(pJoin->pOperator, dsIdx);
+    pTmp = getNextBlockFromDownstreamRemain(pJoin->pOperator, dsIdx, pJoin->pOperator->pNextState);
     if (NULL == pTmp) {
       pTable->dsFetchDone = true;
       return NULL;
@@ -1017,7 +1017,7 @@ SSDataBlock* mJoinGrpRetrieveImpl(SMJoinOperatorInfo* pJoin, SMJoinTableCtx* pTa
       return NULL;
     }
 
-    SSDataBlock* pTmp = getNextBlockFromDownstreamRemain(pJoin->pOperator, dsIdx);
+    SSDataBlock* pTmp = getNextBlockFromDownstreamRemain(pJoin->pOperator, dsIdx, pJoin->pOperator->pNextState);
     if (NULL == pTmp) {
       pTable->dsFetchDone = true;
       return NULL;
@@ -1037,7 +1037,7 @@ static FORCE_INLINE SSDataBlock* mJoinRetrieveImpl(SMJoinOperatorInfo* pJoin, SM
     return NULL;
   }
   
-  SSDataBlock* pTmp = getNextBlockFromDownstreamRemain(pJoin->pOperator, pTable->downStreamIdx);
+  SSDataBlock* pTmp = getNextBlockFromDownstreamRemain(pJoin->pOperator, pTable->downStreamIdx, pJoin->pOperator->pNextState);
   if (NULL == pTmp) {
     pTable->dsFetchDone = true;
   } else {
@@ -1531,7 +1531,7 @@ void mJoinResetOperator(struct SOperatorInfo* pOperator) {
   pOperator->status = OP_OPENED;
 }
 
-SSDataBlock* mJoinMainProcess(struct SOperatorInfo* pOperator) {
+SSDataBlock* mJoinMainProcess(struct SOperatorInfo* pOperator, SOpNextState* pNextState) {
   SMJoinOperatorInfo* pJoin = pOperator->info;
   if (pOperator->status == OP_EXEC_DONE) {
     if (NULL == pOperator->pDownstreamGetParams || NULL == pOperator->pDownstreamGetParams[0] || NULL == pOperator->pDownstreamGetParams[1]) {
