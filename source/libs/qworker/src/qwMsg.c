@@ -782,7 +782,7 @@ _return:
 
 static void qwAsyncAbortExecCQuery(void* param) {
   struct SQWAsyncRecoverExecInfo* pRecoverInfo = (struct SQWAsyncRecoverExecInfo*)param;
-  // wjm TODO
+  // TODO wjm
 }
 
 int32_t qwSetAsyncRecoverExecInfo(QW_FPARAMS_DEF, SRpcHandleInfo* pConn, qTaskInfo_t pTaskInfo) {

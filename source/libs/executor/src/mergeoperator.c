@@ -40,6 +40,7 @@ typedef struct SNonSortMergeInfo {
 typedef struct SColsMergeInfo {
   SNodeList* pTargets;
   uint64_t   srcBlkIds[2]; 
+  uint32_t   curIdx;
 } SColsMergeInfo;
 
 typedef struct SMultiwayMergeOperatorInfo {
@@ -55,7 +56,7 @@ typedef struct SMultiwayMergeOperatorInfo {
   bool           ignoreGroupId;
   uint64_t       groupId;
   bool           inputWithGroupId;
-  uint64_t       totalRows;
+  uint64_t       totalRows; // for testing
 } SMultiwayMergeOperatorInfo;
 
 typedef struct SSortMergeLoadNextParam {
@@ -353,17 +354,19 @@ SSDataBlock* doColsMerge(SOperatorInfo* pOperator, SOpNextState* pNextState) {
 
   qDebug("start to merge columns, %s", GET_TASKID(pTaskInfo));
 
-  for (int32_t i = 0; i < 2; ++i) {
-    pBlock = getNextBlockFromDownstream(pOperator, i, pNextState);
+  for (; pColsMerge->curIdx < 2; ++pColsMerge->curIdx) {
+    pBlock = getNextBlockFromDownstream(pOperator, pColsMerge->curIdx, pNextState);
     if (pBlock && pBlock->info.rows > 1) {
       qError("more than 1 row returned from downstream, rows:%" PRId64, pBlock->info.rows);
       T_LONG_JMP(pTaskInfo->env, TSDB_CODE_QRY_EXECUTOR_INTERNAL_ERROR);
-    } else if (NULL == pBlock) {
+    } else if (!pBlock) {
+      if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) break;
       nullBlkNum++;
     }
-    
-    copyColumnsValue(pColsMerge->pTargets, pColsMerge->srcBlkIds[i], pInfo->binfo.pRes, pBlock);    
+    copyColumnsValue(pColsMerge->pTargets, pColsMerge->srcBlkIds[pColsMerge->curIdx], pInfo->binfo.pRes, pBlock);
   }
+
+  if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) return NULL;
 
   setOperatorCompleted(pOperator);
 
