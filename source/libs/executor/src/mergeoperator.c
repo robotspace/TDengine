@@ -293,8 +293,7 @@ SSDataBlock* doNonSortMerge(SOperatorInfo* pOperator, SOpNextState* pNextState) 
   int32_t idx = NON_SORT_NEXT_SRC(pNonSortMerge, pNonSortMerge->lastSourceIdx);
   while (idx < pNonSortMerge->sourceNum) {
     pBlock = getNextBlockFromDownstream(pOperator, pNonSortMerge->pSourceStatus[idx], pNextState);
-    if (NULL == pBlock) {
-      if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) break;
+    if (NULL == pBlock && !OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) {
       TSWAP(pNonSortMerge->pSourceStatus[pNonSortMerge->sourceWorkIdx], pNonSortMerge->pSourceStatus[idx]);
       pNonSortMerge->sourceWorkIdx++;
       idx = NON_SORT_NEXT_SRC(pNonSortMerge, pNonSortMerge->lastSourceIdx);

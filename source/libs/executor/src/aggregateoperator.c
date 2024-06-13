@@ -167,7 +167,7 @@ static bool nextGroupedResult(SOperatorInfo* pOperator) {
   SExecTaskInfo*    pTaskInfo = pOperator->pTaskInfo;
   SAggOperatorInfo* pAggInfo = pOperator->info;
 
-  if (pOperator->blocking && pAggInfo->hasValidBlock) return false;
+  if (pOperator->blocking && pOperator->fetchFinished) return false;
 
   SExprSupp*     pSup = &pOperator->exprSupp;
   SOperatorInfo* downstream = pOperator->pDownstream[0];
@@ -192,6 +192,7 @@ static bool nextGroupedResult(SOperatorInfo* pOperator) {
     pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
     if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) break;
     if (pBlock == NULL) {
+      pOperator->fetchFinished = true;
       if (!pAggInfo->hasValidBlock) {
         createDataBlockForEmptyInput(pOperator, &pBlock);
         if (pBlock == NULL) {
@@ -235,9 +236,10 @@ static bool nextGroupedResult(SOperatorInfo* pOperator) {
   if (pTaskInfo->code != TSDB_CODE_SUCCESS) {
     T_LONG_JMP(pTaskInfo->env, pTaskInfo->code);
   }
+  if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) return true;
 
   initGroupedResultInfo(&pAggInfo->groupResInfo, pAggInfo->aggSup.pResultRowHashTable, 0);
-  return pBlock != NULL || OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator);
+  return pBlock != NULL;
 }
 
 SSDataBlock* getAggregateResult(SOperatorInfo* pOperator, SOpNextState* pNextState) {

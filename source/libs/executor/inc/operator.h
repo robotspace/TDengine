@@ -93,6 +93,7 @@ typedef struct SOperatorInfo {
   SOperatorFpSet         fpSet;
   bool                   shouldRetryLater;
   SOpNextState*          pNextState;
+  bool                   fetchFinished;
 } SOperatorInfo;
 
 // operator creater functions
