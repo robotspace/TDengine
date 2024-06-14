@@ -76,6 +76,7 @@ struct SSortHandle {
   bool             forceUsePQSort;
   BoundedQueue*    pBoundedQueue;
   uint32_t         tmpRowIdx;
+  bool             pqSortFetchDone;
 
   int64_t          mergeLimit;
   int64_t          currMergeLimitTs;          
@@ -2185,6 +2186,58 @@ static int32_t tupleComparFn(const void* pLeft, const void* pRight, void* param)
   return 0;
 }
 
+static int32_t tsortPQSortFetchBlocks(SSortHandle* pHandle) {
+  int32_t           code = TSDB_CODE_SUCCESS;
+  uint32_t          tupleLen = 0;
+  SSortSource*      source = taosArrayGetP(pHandle->pOrderedSource, 0);
+  PriorityQueueNode pqNode;
+
+  while (1) {
+    SSDataBlock* pBlock = tsortFetchSourceNextBlock(pHandle, source);
+    if (NULL == pBlock) {
+      if (source->status == SORT_SOURCE_STATUS_RETRY_LATER) {
+        terrno = code = TSDB_CODE_QRY_QWORKER_RETRY_LATER;
+      } else {
+        pHandle->pqSortFetchDone = true;
+      }
+      break;
+    }
+
+    if (pHandle->beforeFp != NULL) {
+      pHandle->beforeFp(pBlock, pHandle->param);
+    }
+    if (pHandle->pDataBlock == NULL) {
+      pHandle->pDataBlock = createOneDataBlock(pBlock, false);
+    }
+    if (pHandle->pDataBlock == NULL) return TSDB_CODE_OUT_OF_MEMORY;
+
+    size_t colNum = blockDataGetNumOfCols(pBlock);
+
+    if (tupleLen == 0) {
+      for (size_t colIdx = 0; colIdx < colNum; ++colIdx) {
+        SColumnInfoData* pCol = taosArrayGet(pBlock->pDataBlock, colIdx);
+        tupleLen += pCol->info.bytes;
+        if (IS_VAR_DATA_TYPE(pCol->info.type)) {
+          tupleLen += sizeof(VarDataLenT);
+        }
+      }
+    }
+    ReferencedTuple refTuple = {.desc.data = (char*)pBlock, .desc.type = ReferencedTupleType, .rowIndex = 0};
+    for (size_t rowIdx = 0; rowIdx < pBlock->info.rows; ++rowIdx) {
+      refTuple.rowIndex = rowIdx;
+      pqNode.data = &refTuple;
+      PriorityQueueNode* pPushedNode = taosBQPush(pHandle->pBoundedQueue, &pqNode);
+      if (!pPushedNode) {
+        // do nothing if push failed
+      } else {
+        pPushedNode->data = createAllocatedTuple(pBlock, colNum, tupleLen, rowIdx);
+        if (pPushedNode->data == NULL) return TSDB_CODE_OUT_OF_MEMORY;
+      }
+    }
+  }
+  return code;
+}
+
 static int32_t tsortOpenForPQSort(SSortHandle* pHandle) {
   pHandle->pBoundedQueue = createBoundedQueue(pHandle->pqMaxRows, tsortPQCompFn, destroyTuple, pHandle);
   if (NULL == pHandle->pBoundedQueue) return TSDB_CODE_OUT_OF_MEMORY;
@@ -2194,6 +2247,7 @@ static int32_t tsortOpenForPQSort(SSortHandle* pHandle) {
   SSortSource*  source = *pSource;
 
   pHandle->pDataBlock = NULL;
+  return TSDB_CODE_SUCCESS;
   uint32_t tupleLen = 0;
   PriorityQueueNode pqNode;
   while (1) {
@@ -2238,6 +2292,9 @@ static int32_t tsortOpenForPQSort(SSortHandle* pHandle) {
 }
 
 static STupleHandle* tsortPQSortNextTuple(SSortHandle* pHandle) {
+  if (!pHandle->pqSortFetchDone) terrno = tsortPQSortFetchBlocks(pHandle);
+  if (terrno != TSDB_CODE_SUCCESS) return NULL;
+
   if (pHandle->pDataBlock == NULL) { // when no input stream datablock
     return NULL;
   }

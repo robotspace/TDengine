@@ -172,16 +172,19 @@ void appendOneRowToDataBlock(SSDataBlock* pBlock, STupleHandle* pTupleHandle) {
 /**
  * @brief get next tuple with group id attached, here assume that all tuples are sorted by group keys
  * @param [in, out] pBlock the output block, the group id will be saved in it
- * @retval NULL if next group tuple arrived and this new group tuple will be saved in pInfo.pSavedTuple
+ * @retval not NULL if next group tuple arrived and this new group tuple will be saved in pInfo.pSavedTuple
  * @retval NULL if no more tuples
  */
-static STupleHandle* nextTupleWithGroupId(SSortHandle* pHandle, SSortOperatorInfo* pInfo, SSDataBlock* pBlock) {
+static STupleHandle* nextTupleWithGroupId(SSortHandle* pHandle, SSortOperatorInfo* pInfo, SSDataBlock** pBlock) {
   STupleHandle* retTuple = pInfo->pGroupIdCalc->pSavedTuple;
   if (!retTuple) {
     retTuple = tsortNextTuple(pHandle);
   }
 
   if (retTuple) {
+    if (!*pBlock) *pBlock = tsortGetSortedDataBlock(pHandle);
+    if (!*pBlock) return NULL;
+
     int32_t newGroup;
     if (pInfo->pGroupIdCalc->pSavedTuple) {
       newGroup = true;
@@ -190,7 +193,7 @@ static STupleHandle* nextTupleWithGroupId(SSortHandle* pHandle, SSortOperatorInf
       newGroup = tsortCompAndBuildKeys(pInfo->pGroupIdCalc->pSortColsArr, pInfo->pGroupIdCalc->keyBuf,
                                        &pInfo->pGroupIdCalc->lastKeysLen, retTuple);
     }
-    bool emptyBlock = pBlock->info.rows == 0;
+    bool emptyBlock = (*pBlock)->info.rows == 0;
     if (newGroup) {
       if (!emptyBlock) {
         // new group arrived, and we have already copied some tuples for cur group, save the new group tuple, return
@@ -199,13 +202,13 @@ static STupleHandle* nextTupleWithGroupId(SSortHandle* pHandle, SSortOperatorInf
         retTuple = NULL;
       } else {
         // new group with empty block
-        pInfo->pGroupIdCalc->lastGroupId = pBlock->info.id.groupId =
+        pInfo->pGroupIdCalc->lastGroupId = (*pBlock)->info.id.groupId =
             calcGroupId(pInfo->pGroupIdCalc->keyBuf, pInfo->pGroupIdCalc->lastKeysLen);
       }
     } else {
       if (emptyBlock) {
         // new block but not new group, assign last group id to it
-        pBlock->info.id.groupId = pInfo->pGroupIdCalc->lastGroupId;
+        (*pBlock)->info.id.groupId = pInfo->pGroupIdCalc->lastGroupId;
       } else {
         // not new group and not empty block and ret NOT NULL, just return the tuple
       }
@@ -219,23 +222,23 @@ SSDataBlock* getSortedBlockData(SSortHandle* pHandle, SSDataBlock* pDataBlock, i
                                 SSortOperatorInfo* pInfo) {
   blockDataCleanup(pDataBlock);
 
-  SSDataBlock* p = tsortGetSortedDataBlock(pHandle);
-  if (p == NULL) {
-    return NULL;
-  }
-
-  blockDataEnsureCapacity(p, capacity);
+  SSDataBlock* p = NULL;
 
   STupleHandle* pTupleHandle;
   while (1) {
     if (pInfo->pGroupIdCalc) {
-      pTupleHandle = nextTupleWithGroupId(pHandle, pInfo, p);
+      pTupleHandle = nextTupleWithGroupId(pHandle, pInfo, &p);
     } else {
       pTupleHandle = tsortNextTuple(pHandle);
     }
     if (pTupleHandle == NULL) {
       break;
     }
+    if (!p) p = tsortGetSortedDataBlock(pHandle);
+    if (p)
+      blockDataEnsureCapacity(p, capacity);
+    else
+      break;
 
     appendOneRowToDataBlock(p, pTupleHandle);
     if (p->info.rows >= capacity) {
@@ -243,7 +246,7 @@ SSDataBlock* getSortedBlockData(SSortHandle* pHandle, SSDataBlock* pDataBlock, i
     }
   }
 
-  if (p->info.rows > 0) {
+  if (p && p->info.rows > 0) {
     blockDataEnsureCapacity(pDataBlock, capacity);
 
     // todo extract function to handle this
@@ -268,12 +271,12 @@ SSDataBlock* getSortedBlockData(SSortHandle* pHandle, SSDataBlock* pDataBlock, i
 
 typedef struct SSortOperNextBlockParam {
   SOperatorInfo* pDownstream;
-  SOpNextState* pNextState;
+  SOpNextState** pNextState;
 } SSortOperNextBlockParam;
 
 SSDataBlock* loadNextDataBlock(void* param, bool* retryLater) {
   SSortOperNextBlockParam* pParam = (SSortOperNextBlockParam*)param;
-  SSDataBlock*             pBlock = pParam->pDownstream->fpSet.getNextFn(pParam->pDownstream, pParam->pNextState);
+  SSDataBlock*             pBlock = pParam->pDownstream->fpSet.getNextFn(pParam->pDownstream, *pParam->pNextState);
   if (retryLater && OP_NEXT_STATE_SHOULD_RETRY_LATER(pParam->pDownstream)) *retryLater = true;
   return pBlock;
 }
@@ -309,6 +312,7 @@ int32_t doOpenSortOperator(SOperatorInfo* pOperator) {
   SSortSource* ps = taosMemoryCalloc(1, sizeof(SSortSource) + sizeof(SSortOperNextBlockParam));
   SSortOperNextBlockParam* pParam = (SSortOperNextBlockParam*)(ps + 1);
   pParam->pDownstream = pOperator->pDownstream[0];
+  pParam->pNextState = &pOperator->pNextState;
   ps->param = pParam;
   ps->onlyRef = true;
   tsortAddSource(pInfo->pSortHandle, ps);
@@ -350,6 +354,10 @@ SSDataBlock* doSort(SOperatorInfo* pOperator, SOpNextState* pNextState) {
     pBlock = getSortedBlockData(pInfo->pSortHandle, pInfo->binfo.pRes, pOperator->resultInfo.capacity,
                                 pInfo->matchInfo.pList, pInfo);
     if (pBlock == NULL) {
+      if (terrno == TSDB_CODE_QRY_QWORKER_RETRY_LATER) {
+        OP_NEXT_STATE_SET_RETRY_LATER(pOperator);
+        terrno = TSDB_CODE_SUCCESS;
+      }
       setOperatorCompleted(pOperator);
       return NULL;
     }

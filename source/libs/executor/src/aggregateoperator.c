@@ -190,8 +190,8 @@ static bool nextGroupedResult(SOperatorInfo* pOperator) {
   while (1) {
     bool blockAllocated = false;
     pBlock = getNextBlockFromDownstream(pOperator, 0, pOperator->pNextState);
-    if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) break;
     if (pBlock == NULL) {
+      if (OP_NEXT_STATE_SHOULD_RETRY_LATER(pOperator)) break;
       pOperator->fetchFinished = true;
       if (!pAggInfo->hasValidBlock) {
         createDataBlockForEmptyInput(pOperator, &pBlock);

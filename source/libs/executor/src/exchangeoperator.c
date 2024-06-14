@@ -751,7 +751,7 @@ int32_t doExtractResultBlocks(SExchangeInfo* pExchangeInfo, SSourceDataInfo* pDa
   return code;
 }
 
-// TODO wjm change the function name
+// TODO wjm change the function name, remove compare_exchange
 static bool isExchangeReady(SExchangeInfo* pExchangeInfo) {
   int32_t oldCounter = atomic_load_32(&pExchangeInfo->readyCounter);
   while (oldCounter > 0) {
