@@ -43,6 +43,7 @@ struct SNodeAllocator {
 
 static threadlocal SNodeAllocator* g_pNodeAllocator;
 static int32_t                     g_allocatorReqRefPool = -1;
+static threadlocal SNodeAllocator* g_prevNodeAllocator;
 
 char* getJoinTypeString(EJoinType type) {
   static char* joinType[] = {"", "INNER", "LEFT", "RIGHT", "FULL"};
@@ -290,6 +291,25 @@ int32_t nodesReleaseAllocator(int64_t allocatorId) {
   g_pNodeAllocator = NULL;
   taosThreadMutexUnlock(&pAllocator->mutex);
   return taosReleaseRef(g_allocatorReqRefPool, allocatorId);
+}
+
+void saveTempAllocator() {
+  if (NULL == g_pNodeAllocator) {
+    nodesError(
+        "release failed: The saveTempAllocator function needs to be called after the nodesAcquireAllocator function is "
+        "called!");
+  }
+  g_prevNodeAllocator = g_pNodeAllocator;
+}
+
+void getTempAllocator() {
+  if (NULL == g_pNodeAllocator) {
+    nodesError(
+        "release failed: The getTempAllocator function needs to be called after the saveTempAllocator function is "
+        "called!");
+  }
+  g_pNodeAllocator = g_prevNodeAllocator;
+  g_prevNodeAllocator = NULL;
 }
 
 int64_t nodesMakeAllocatorWeakRef(int64_t allocatorId) {

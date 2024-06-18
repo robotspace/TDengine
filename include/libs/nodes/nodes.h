@@ -111,6 +111,8 @@ int32_t nodesReleaseAllocator(int64_t allocatorId);
 int64_t nodesMakeAllocatorWeakRef(int64_t allocatorId);
 int64_t nodesReleaseAllocatorWeakRef(int64_t allocatorId);
 void    nodesDestroyAllocator(int64_t allocatorId);
+void    saveTempAllocator();
+void    getTempAllocator();
 
 SNode* nodesMakeNode(ENodeType type);
 void   nodesDestroyNode(SNode* pNode);
